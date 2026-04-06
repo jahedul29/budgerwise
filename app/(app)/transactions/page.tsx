@@ -15,7 +15,7 @@ import { AddTransactionSheet } from '@/components/transactions/AddTransactionShe
 import { useTransactions } from '@/hooks/useTransactions';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useUIStore } from '@/store/uiStore';
-import { formatAmount } from '@/lib/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 
 function getDateLabel(dateStr: string): string {
   const date = new Date(dateStr);
@@ -28,6 +28,7 @@ export default function TransactionsPage() {
   const { isLoading, getFilteredTransactions, setFilter } = useTransactions();
   const { filter } = useTransactionStore();
   const { showFilterPanel, setShowFilterPanel } = useUIStore();
+  const { formatAmount } = useCurrency();
 
   const filteredTransactions = getFilteredTransactions();
 

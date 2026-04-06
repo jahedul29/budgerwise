@@ -10,11 +10,12 @@ import { AccountCard } from '@/components/accounts/AccountCard';
 import { AccountForm } from '@/components/accounts/AccountForm';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAccounts } from '@/hooks/useAccounts';
-import { formatAmount } from '@/lib/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import toast from 'react-hot-toast';
 
 export default function AccountsPage() {
   const { accounts, isLoading, addAccount, updateAccount, deleteAccount, getTotalBalance } = useAccounts();
+  const { formatAmount } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
 

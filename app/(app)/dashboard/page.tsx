@@ -18,7 +18,7 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
-import { formatAmount } from '@/lib/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import { AddTransactionSheet } from '@/components/transactions/AddTransactionSheet';
 import { useUIStore } from '@/store/uiStore';
 import Link from 'next/link';
@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const { getCurrentMonthBudgets } = useBudgets();
   const { accounts, getTotalBalance } = useAccounts();
   const { categories } = useCategories();
+  const { formatAmount } = useCurrency();
   const [hideBalance, setHideBalance] = React.useState(false);
 
   const now = new Date();

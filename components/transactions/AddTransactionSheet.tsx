@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { VoiceInputButton } from '@/components/shared/VoiceInputButton';
+import { DateTimePicker } from '@/components/transactions/DateTimePicker';
 import type { TransactionType, PaymentMethod } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -33,18 +34,45 @@ export function AddTransactionSheet() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cash');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const shouldDismissRef = useRef(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       amount: '',
       description: '',
       notes: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       accountId: '',
     },
   });
 
+  const dateValue = watch('date');
   const filteredCategories = getCategoriesByType(type === 'transfer' ? 'expense' : type);
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+    shouldDismissRef.current = (sheetRef.current?.scrollTop ?? 0) <= 0;
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartYRef.current === null || !shouldDismissRef.current) return;
+
+    const currentY = event.touches[0]?.clientY ?? 0;
+    const deltaY = currentY - touchStartYRef.current;
+
+    if (deltaY > 72) {
+      setShowAddTransaction(false);
+      touchStartYRef.current = null;
+      shouldDismissRef.current = false;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartYRef.current = null;
+    shouldDismissRef.current = false;
+  };
 
   const onSubmit = async (data: any) => {
     const category = categories.find(c => c.id === selectedCategory);
@@ -108,6 +136,10 @@ export function AddTransactionSheet() {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+            ref={sheetRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             className="fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white dark:bg-surface-elevated lg:left-auto lg:right-0 lg:w-[480px] lg:rounded-tl-3xl lg:rounded-tr-none"
           >
             {/* Drag Handle */}
@@ -115,7 +147,7 @@ export function AddTransactionSheet() {
               <div className="h-1.5 w-12 rounded-full bg-navy-200 dark:bg-navy-600" />
             </div>
 
-            <div className="px-5 pb-8 lg:px-6">
+            <div className="px-5 pb-28 lg:px-6 lg:pb-8">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-lg font-display font-bold text-navy-900 dark:text-navy-50">Add Transaction</h2>
                 <div className="flex items-center gap-2">
@@ -207,11 +239,11 @@ export function AddTransactionSheet() {
                   </div>
                 </div>
 
-                {/* Date */}
-                <div>
-                  <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-1 block">Date</Label>
-                  <Input type="date" {...register('date')} className="rounded-xl" />
-                </div>
+                {/* Date & Time */}
+                <DateTimePicker
+                  value={dateValue}
+                  onChange={(v) => setValue('date', v)}
+                />
 
                 {/* Payment Method */}
                 <div>

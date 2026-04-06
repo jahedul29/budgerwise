@@ -11,7 +11,7 @@ import { BudgetForm } from '@/components/budgets/BudgetForm';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useTransactions } from '@/hooks/useTransactions';
-import { formatAmount } from '@/lib/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import toast from 'react-hot-toast';
 
 const stagger = {
@@ -27,6 +27,7 @@ const fadeUp = {
 export default function BudgetsPage() {
   const { budgets, isLoading, addBudget, updateBudget, deleteBudget, getCurrentMonthBudgets } = useBudgets();
   const { transactions } = useTransactions();
+  const { formatAmount } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingBudget, setEditingBudget] = useState<any>(null);
 

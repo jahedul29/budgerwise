@@ -9,6 +9,8 @@ interface UIState {
   syncNow: null | (() => Promise<boolean>);
   showAddTransaction: boolean;
   showFilterPanel: boolean;
+  currency: string;
+  _currencyHydrated: boolean;
   setSyncing: (syncing: boolean) => void;
   setOnline: (online: boolean) => void;
   setSyncStatus: (status: UIState['syncStatus']) => void;
@@ -17,6 +19,8 @@ interface UIState {
   setSyncNow: (syncNow: UIState['syncNow']) => void;
   setShowAddTransaction: (show: boolean) => void;
   setShowFilterPanel: (show: boolean) => void;
+  setCurrency: (currency: string) => void;
+  hydrateCurrency: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -28,6 +32,8 @@ export const useUIStore = create<UIState>((set) => ({
   syncNow: null,
   showAddTransaction: false,
   showFilterPanel: false,
+  currency: 'BDT',
+  _currencyHydrated: false,
   setSyncing: (isSyncing) => set({ isSyncing }),
   setOnline: (isOnline) => set({ isOnline }),
   setSyncStatus: (syncStatus) => set({ syncStatus }),
@@ -36,4 +42,20 @@ export const useUIStore = create<UIState>((set) => ({
   setSyncNow: (syncNow) => set({ syncNow }),
   setShowAddTransaction: (showAddTransaction) => set({ showAddTransaction }),
   setShowFilterPanel: (showFilterPanel) => set({ showFilterPanel }),
+  setCurrency: (currency) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('budgetwise_currency', currency);
+    }
+    set({ currency });
+  },
+  hydrateCurrency: () => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('budgetwise_currency');
+      if (saved) {
+        set({ currency: saved, _currencyHydrated: true });
+      } else {
+        set({ _currencyHydrated: true });
+      }
+    }
+  },
 }));
