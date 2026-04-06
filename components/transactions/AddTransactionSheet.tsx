@@ -171,15 +171,15 @@ export function AddTransactionSheet() {
                 {/* Category Picker */}
                 <div>
                   <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">Category</Label>
-                  <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto scrollbar-hide">
+                  <div className="grid grid-cols-4 gap-2 p-1 -m-1 max-h-32 overflow-y-auto scrollbar-hide">
                     {filteredCategories.map(cat => (
                       <button
                         key={cat.id}
                         type="button"
                         onClick={() => setSelectedCategory(cat.id)}
-                        className={`flex flex-col items-center gap-1 rounded-xl p-2.5 text-xs font-medium transition-all ${
+                        className={`flex flex-col items-center gap-1 rounded-xl border-2 border-transparent p-2.5 text-xs font-medium transition-all ${
                           selectedCategory === cat.id
-                            ? 'bg-primary-50 ring-2 ring-primary-500 dark:bg-primary-500/10 dark:ring-primary-400'
+                            ? 'border-2 border-primary-500 bg-primary-50 shadow-sm dark:border-primary-400 dark:bg-primary-500/10'
                             : 'bg-surface-light dark:bg-white/[0.03] hover:bg-navy-50 dark:hover:bg-white/[0.06]'
                         }`}
                       >

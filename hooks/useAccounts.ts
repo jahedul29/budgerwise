@@ -2,11 +2,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
+import { useUIStore } from '@/store/uiStore';
+import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { Account, AccountType } from '@/types';
 
 export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { isOnline, lastSyncTime, syncStatus } = useUIStore();
 
   const loadAccounts = useCallback(async () => {
     setIsLoading(true);
@@ -17,6 +20,11 @@ export function useAccounts() {
         .toArray();
 
       if (accs.length === 0) {
+        if (isOnline && !lastSyncTime && syncStatus !== 'error') {
+          setAccounts([]);
+          return;
+        }
+
         const defaultAccount: Account = {
           id: generateId(),
           name: 'Cash',
@@ -38,10 +46,19 @@ export function useAccounts() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isOnline, lastSyncTime, syncStatus]);
 
   useEffect(() => {
     loadAccounts();
+  }, [loadAccounts]);
+
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadAccounts();
+    };
+
+    window.addEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
+    return () => window.removeEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
   }, [loadAccounts]);
 
   const addAccount = useCallback(async (data: Omit<Account, 'id' | 'createdAt' | '_syncStatus'>) => {

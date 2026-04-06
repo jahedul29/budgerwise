@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
+import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { Budget, BudgetPeriod } from '@/types';
 import { format } from 'date-fns';
 
@@ -26,6 +27,15 @@ export function useBudgets() {
 
   useEffect(() => {
     loadBudgets();
+  }, [loadBudgets]);
+
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadBudgets();
+    };
+
+    window.addEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
+    return () => window.removeEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
   }, [loadBudgets]);
 
   const addBudget = useCallback(async (data: Omit<Budget, 'id' | 'createdAt' | '_syncStatus'>) => {

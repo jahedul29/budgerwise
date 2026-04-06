@@ -3,11 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { localDb } from '@/lib/dexie';
 import { createDefaultCategories } from '@/lib/default-categories';
 import { generateId } from '@/lib/utils';
+import { useUIStore } from '@/store/uiStore';
+import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { Category, CategoryType } from '@/types';
 
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { isOnline, lastSyncTime, syncStatus } = useUIStore();
 
   const loadCategories = useCallback(async () => {
     setIsLoading(true);
@@ -18,6 +21,11 @@ export function useCategories() {
         .toArray();
 
       if (cats.length === 0) {
+        if (isOnline && !lastSyncTime && syncStatus !== 'error') {
+          setCategories([]);
+          return;
+        }
+
         const defaults = createDefaultCategories();
         await localDb.categories.bulkAdd(defaults);
         cats = defaults;
@@ -29,10 +37,19 @@ export function useCategories() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isOnline, lastSyncTime, syncStatus]);
 
   useEffect(() => {
     loadCategories();
+  }, [loadCategories]);
+
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadCategories();
+    };
+
+    window.addEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
+    return () => window.removeEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
   }, [loadCategories]);
 
   const addCategory = useCallback(async (data: { name: string; icon: string; color: string; type: CategoryType }) => {

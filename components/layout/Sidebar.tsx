@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { SyncIndicator } from '@/components/shared/SyncIndicator';
 import { LogoMark } from '@/components/brand/LogoMark';
+import { SignOutButton } from '@/components/shared/SignOutButton';
 
 const mainNav = [
   { name: 'Dashboard', icon: Home, href: '/dashboard' },
@@ -31,7 +32,9 @@ export function Sidebar() {
     <aside className="hidden lg:flex lg:flex-col lg:w-[260px] xl:w-[280px] h-screen sticky top-0 glass-nav border-r border-gray-200/50 dark:border-white/[0.04]">
       {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-6">
-        <LogoMark className="h-10 w-10 shadow-glow-sm" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-glow-sm">
+          <LogoMark className="h-6.5 w-6.5" />
+        </div>
         <span className="font-display text-xl font-bold tracking-tight text-gradient">BudgetWise</span>
       </div>
 
@@ -123,6 +126,7 @@ export function Sidebar() {
           </div>
           <SyncIndicator />
         </div>
+        <SignOutButton className="mt-4" />
       </div>
     </aside>
   );

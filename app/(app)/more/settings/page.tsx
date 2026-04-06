@@ -2,7 +2,7 @@
 import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Moon, Sun, Monitor, Download, Trash2 } from 'lucide-react';
+import { ArrowLeft, Moon, Sun, Monitor, Download, RefreshCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { LogoMark } from '@/components/brand/LogoMark';
 import { PageWrapper } from '@/components/layout/PageWrapper';
@@ -24,7 +24,7 @@ const fadeUp = {
 export default function SettingsPage() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
-  const { syncStatus, lastSyncTime } = useUIStore();
+  const { syncStatus, syncError, lastSyncTime, syncNow, isSyncing } = useUIStore();
 
   const handleExportCSV = async () => {
     try {
@@ -89,6 +89,20 @@ export default function SettingsPage() {
     { value: 'system', label: 'System', icon: Monitor },
   ];
 
+  const handleManualSync = async () => {
+    if (!syncNow) {
+      toast.error('Sync is not ready yet');
+      return;
+    }
+
+    const didSync = await syncNow();
+    if (didSync) {
+      toast.success('Sync completed');
+    } else {
+      toast.error('Sync failed');
+    }
+  };
+
   return (
     <PageWrapper>
       <div className="sticky top-0 z-30 glass-nav">
@@ -150,6 +164,20 @@ export default function SettingsPage() {
                   <span className="text-sm text-navy-400 dark:text-navy-300">{lastSyncTime.toLocaleTimeString()}</span>
                 </div>
               )}
+              {syncError && (
+                <div className="rounded-xl border border-expense/20 bg-expense/5 px-3 py-2 text-xs text-expense">
+                  {syncError}
+                </div>
+              )}
+              <Button
+                variant={syncStatus === 'error' ? 'default' : 'outline'}
+                onClick={handleManualSync}
+                disabled={!syncNow || isSyncing}
+                className="mt-2 w-full justify-center gap-2 rounded-xl h-11"
+              >
+                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                {syncStatus === 'error' ? 'Retry Sync' : 'Sync Now'}
+              </Button>
             </div>
           </div>
         </motion.div>
@@ -184,7 +212,9 @@ export default function SettingsPage() {
         {/* About */}
         <motion.div variants={fadeUp}>
           <div className="glass-card rounded-2xl p-5 text-center">
-            <LogoMark className="mx-auto mb-3 h-12 w-12 shadow-glow-sm" />
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-3xl gradient-primary shadow-glow-sm">
+              <LogoMark className="h-6.5 w-6.5" />
+            </div>
             <p className="text-sm font-display font-bold text-navy-800 dark:text-navy-50">BudgetWise</p>
             <p className="text-xs text-navy-400 dark:text-navy-300 mt-1">Version 1.0.0</p>
             <p className="text-xs text-navy-300 dark:text-navy-400 mt-2">Smart budgeting, beautiful insights</p>

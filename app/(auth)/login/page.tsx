@@ -55,9 +55,9 @@ export default function LoginPage() {
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: 'spring', bounce: 0.4, duration: 0.8 }}
-              className="mx-auto lg:mx-0 mb-8"
+              className="mx-auto lg:mx-0 mb-8 flex h-20 w-20 lg:h-24 lg:w-24 items-center justify-center rounded-3xl gradient-hero shadow-glow-lg"
             >
-              <LogoMark className="h-20 w-20 lg:h-24 lg:w-24 shadow-glow-lg" />
+              <LogoMark className="h-12 w-12 lg:h-14 lg:w-14" />
             </motion.div>
 
             <motion.h1

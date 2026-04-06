@@ -1,19 +1,12 @@
 'use client';
 import { localDb } from './dexie';
-import { db } from './firebase';
 import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDocs,
-  query,
-  where,
-  Timestamp,
-} from 'firebase/firestore';
-import type { Transaction, Category, Budget, Account } from '@/types';
-
-type SyncableTable = 'transactions' | 'categories' | 'budgets' | 'accounts';
+  normalizeRecordForClient,
+  normalizeRecordForServer,
+  type SyncPullPayload,
+  type SyncPushPayload,
+  type SyncableTable,
+} from './sync-payload';
 
 export class SyncEngine {
   private userId: string;
@@ -22,17 +15,40 @@ export class SyncEngine {
     this.userId = userId;
   }
 
-  private getCollectionRef(tableName: SyncableTable) {
-    return collection(db, 'users', this.userId, tableName);
+  private async withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 15000): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+      }),
+    ]);
+  }
+
+  private async request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+    const response = await fetch(input, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(body?.error ?? `Sync request failed with ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
   }
 
   async syncAll(): Promise<void> {
-    await this.pushChanges();
-    await this.pullChanges();
+    await this.withTimeout(this.pushChanges(), 'Push sync');
+    await this.withTimeout(this.pullChanges(), 'Pull sync');
   }
 
   async pushChanges(): Promise<void> {
     const tables: SyncableTable[] = ['transactions', 'categories', 'budgets', 'accounts'];
+    const changes = {} as SyncPushPayload['changes'];
 
     for (const tableName of tables) {
       const table = localDb[tableName];
@@ -42,91 +58,74 @@ export class SyncEngine {
         .where('_syncStatus')
         .equals('pending_create')
         .toArray();
-      for (const record of pendingCreates) {
-        try {
-          const docRef = doc(this.getCollectionRef(tableName), record.id);
-          const { _syncStatus, ...data } = record as any;
-          await setDoc(docRef, {
-            ...data,
-            date: data.date ? Timestamp.fromDate(new Date(data.date)) : null,
-            createdAt: Timestamp.fromDate(new Date(data.createdAt)),
-            updatedAt: data.updatedAt ? Timestamp.fromDate(new Date(data.updatedAt)) : null,
-          });
-          await table.update(record.id, { _syncStatus: 'synced', syncStatus: 'synced' } as any);
-        } catch (error) {
-          console.error(`Failed to sync create for ${tableName}:`, error);
-        }
-      }
 
       // Push updates
       const pendingUpdates = await table
         .where('_syncStatus')
         .equals('pending_update')
         .toArray();
-      for (const record of pendingUpdates) {
-        try {
-          const docRef = doc(this.getCollectionRef(tableName), record.id);
-          const { _syncStatus, ...data } = record as any;
-          await setDoc(docRef, {
-            ...data,
-            date: data.date ? Timestamp.fromDate(new Date(data.date)) : null,
-            createdAt: Timestamp.fromDate(new Date(data.createdAt)),
-            updatedAt: data.updatedAt ? Timestamp.fromDate(new Date(data.updatedAt)) : null,
-          }, { merge: true });
-          await table.update(record.id, { _syncStatus: 'synced', syncStatus: 'synced' } as any);
-        } catch (error) {
-          console.error(`Failed to sync update for ${tableName}:`, error);
-        }
-      }
 
       // Push deletes
       const pendingDeletes = await table
         .where('_syncStatus')
         .equals('pending_delete')
         .toArray();
-      for (const record of pendingDeletes) {
-        try {
-          const docRef = doc(this.getCollectionRef(tableName), record.id);
-          await deleteDoc(docRef);
-          await table.delete(record.id);
-        } catch (error) {
-          console.error(`Failed to sync delete for ${tableName}:`, error);
-        }
+
+      changes[tableName] = {
+        create: pendingCreates.map((record) => normalizeRecordForServer(record)),
+        update: pendingUpdates.map((record) => normalizeRecordForServer(record)),
+        delete: pendingDeletes.map((record) => record.id),
+      };
+    }
+
+    const hasChanges = tables.some((tableName) =>
+      changes[tableName].create.length > 0 ||
+      changes[tableName].update.length > 0 ||
+      changes[tableName].delete.length > 0
+    );
+
+    if (!hasChanges) {
+      return;
+    }
+
+    await this.request('/api/sync', {
+      method: 'POST',
+      body: JSON.stringify({ changes }),
+    });
+
+    for (const tableName of tables) {
+      const table = localDb[tableName];
+
+      for (const record of changes[tableName].create) {
+        await table.update((record as { id: string }).id, { _syncStatus: 'synced', syncStatus: 'synced' } as never);
+      }
+
+      for (const record of changes[tableName].update) {
+        await table.update((record as { id: string }).id, { _syncStatus: 'synced', syncStatus: 'synced' } as never);
+      }
+
+      for (const id of changes[tableName].delete) {
+        await table.delete(id);
       }
     }
   }
 
   async pullChanges(): Promise<void> {
     const tables: SyncableTable[] = ['transactions', 'categories', 'budgets', 'accounts'];
+    const response = await this.request<SyncPullPayload>('/api/sync');
 
     for (const tableName of tables) {
-      try {
-        const snapshot = await getDocs(this.getCollectionRef(tableName));
-        const remoteRecords = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            ...data,
-            id: doc.id,
-            date: data.date?.toDate?.() || data.date,
-            createdAt: data.createdAt?.toDate?.() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-            _syncStatus: 'synced',
-          };
-        });
+      const table = localDb[tableName];
+      const remoteRecords = response.data[tableName] ?? [];
 
-        const table = localDb[tableName];
-        for (const remote of remoteRecords) {
-          const local = await table.get(remote.id);
-          if (!local) {
-            await table.add(remote as any);
-          } else if (local._syncStatus === 'synced') {
-            // Only overwrite if local hasn't been modified
-            await table.put(remote as any);
-          }
-          // If local has pending changes, keep local version (last-write-wins on next push)
+      for (const remoteRecord of remoteRecords) {
+        const remote = normalizeRecordForClient(remoteRecord as unknown as Record<string, unknown>);
+        const local = await table.get((remote as { id: string }).id);
+        if (!local) {
+          await table.add(remote as never);
+        } else if (local._syncStatus === 'synced') {
+          await table.put(remote as never);
         }
-      } catch (error) {
-        console.error(`Failed to pull ${tableName}:`, error);
       }
     }
   }

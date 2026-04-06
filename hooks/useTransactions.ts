@@ -3,6 +3,7 @@ import { useEffect, useCallback } from 'react';
 import { useTransactionStore } from '@/store/transactionStore';
 import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
+import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { Transaction, TransactionType, PaymentMethod } from '@/types';
 
 export function useTransactions() {
@@ -27,6 +28,15 @@ export function useTransactions() {
 
   useEffect(() => {
     loadTransactions();
+  }, [loadTransactions]);
+
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadTransactions();
+    };
+
+    window.addEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
+    return () => window.removeEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
   }, [loadTransactions]);
 
   const addTransaction = useCallback(async (data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus' | '_syncStatus'>) => {

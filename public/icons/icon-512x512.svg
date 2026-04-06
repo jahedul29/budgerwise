@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="icon-512-bg" x1="10" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+    <linearGradient id="icon-512-bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#06D6A0" />
       <stop offset="0.55" stop-color="#118AB2" />
-      <stop offset="1" stop-color="#073B4C" />
+      <stop offset="1" stop-color="#0B6E90" />
     </linearGradient>
-    <radialGradient id="icon-512-shine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(21 16) rotate(47.49) scale(35.6545)">
-      <stop stop-color="white" stop-opacity="0.32" />
+    <radialGradient id="icon-512-shine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(18 14) rotate(47.49) scale(38)">
+      <stop stop-color="white" stop-opacity="0.28" />
       <stop offset="1" stop-color="white" stop-opacity="0" />
     </radialGradient>
   </defs>
-  <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#icon-512-bg)" />
-  <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#icon-512-shine)" />
+  <rect x="0" y="0" width="64" height="64" rx="20" fill="url(#icon-512-bg)" />
+  <rect x="0" y="0" width="64" height="64" rx="20" fill="url(#icon-512-shine)" />
   <path d="M18 44V39" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />
   <path d="M25 44V34" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />
   <path d="M32 44V37" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />

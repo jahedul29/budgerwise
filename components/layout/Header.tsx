@@ -2,6 +2,7 @@
 import { useSession } from 'next-auth/react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { SyncIndicator } from '@/components/shared/SyncIndicator';
+import { SignOutButton } from '@/components/shared/SignOutButton';
 import { getGreeting } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -29,8 +30,9 @@ export function Header() {
             </p>
           </div>
         </div>
-        <div className="lg:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
           <SyncIndicator />
+          <SignOutButton compact />
         </div>
       </div>
     </header>

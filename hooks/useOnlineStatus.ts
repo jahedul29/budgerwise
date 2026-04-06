@@ -3,12 +3,13 @@ import { useEffect } from 'react';
 import { useUIStore } from '@/store/uiStore';
 
 export function useOnlineStatus() {
-  const { isOnline, setOnline, setSyncStatus } = useUIStore();
+  const { isOnline, setOnline, setSyncStatus, setSyncError } = useUIStore();
 
   useEffect(() => {
     const handleOnline = () => {
       setOnline(true);
-      setSyncStatus('syncing');
+      setSyncStatus('idle');
+      setSyncError(null);
     };
     const handleOffline = () => {
       setOnline(false);
@@ -25,7 +26,7 @@ export function useOnlineStatus() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [setOnline, setSyncStatus]);
+  }, [setOnline, setSyncStatus, setSyncError]);
 
   return isOnline;
 }
