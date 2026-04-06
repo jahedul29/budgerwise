@@ -1,5 +1,19 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Deployment
+
+This app is set up for free hosting on Vercel.
+
+### Recommended setup
+
+1. Push this repository to GitHub and use `main` as the production branch.
+2. Create a free Vercel Hobby project and import the GitHub repo.
+3. In Vercel, add the production environment variables from `.env.example`.
+4. In Google Cloud OAuth, add your production callback URL:
+   `https://<your-domain>/api/auth/callback/google`
+5. In Vercel project settings, confirm `main` is the production branch.
+6. Every push to `main` will deploy automatically, and pull requests can get preview deployments through Vercel's Git integration.
+
 ## Getting Started
 
 First, run the development server:
