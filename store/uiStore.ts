@@ -1,4 +1,45 @@
 import { create } from 'zustand';
+import type { AccountType, CategoryType, PaymentMethod, TransactionType } from '@/types';
+
+export interface AssistantTransactionDraft {
+  amount?: number;
+  type?: TransactionType;
+  categoryId?: string;
+  accountId?: string;
+  paymentMethod?: PaymentMethod;
+  dateIso?: string;
+  description?: string;
+  notes?: string;
+  source?: 'assistant';
+}
+
+export interface AssistantCategoryDraft {
+  name?: string;
+  type?: CategoryType;
+  icon?: string;
+  color?: string;
+  source?: 'assistant';
+}
+
+export interface AssistantAccountDraft {
+  name?: string;
+  type?: AccountType;
+  balance?: number;
+  currency?: string;
+  icon?: string;
+  color?: string;
+  source?: 'assistant';
+}
+
+export interface AssistantBudgetDraft {
+  categoryId?: string;
+  categoryName?: string;
+  amount?: number;
+  period?: 'monthly' | 'weekly' | 'yearly';
+  month?: string;
+  alertThreshold?: number;
+  source?: 'assistant';
+}
 
 interface UIState {
   isSyncing: boolean;
@@ -9,6 +50,10 @@ interface UIState {
   syncNow: null | (() => Promise<boolean>);
   showAddTransaction: boolean;
   showFilterPanel: boolean;
+  assistantTransactionDraft: AssistantTransactionDraft | null;
+  assistantCategoryDraft: AssistantCategoryDraft | null;
+  assistantAccountDraft: AssistantAccountDraft | null;
+  assistantBudgetDraft: AssistantBudgetDraft | null;
   currency: string;
   _currencyHydrated: boolean;
   setSyncing: (syncing: boolean) => void;
@@ -19,6 +64,11 @@ interface UIState {
   setSyncNow: (syncNow: UIState['syncNow']) => void;
   setShowAddTransaction: (show: boolean) => void;
   setShowFilterPanel: (show: boolean) => void;
+  setAssistantTransactionDraft: (draft: AssistantTransactionDraft | null) => void;
+  clearAssistantTransactionDraft: () => void;
+  setAssistantCategoryDraft: (draft: AssistantCategoryDraft | null) => void;
+  setAssistantAccountDraft: (draft: AssistantAccountDraft | null) => void;
+  setAssistantBudgetDraft: (draft: AssistantBudgetDraft | null) => void;
   setCurrency: (currency: string) => void;
   hydrateCurrency: () => void;
 }
@@ -32,6 +82,10 @@ export const useUIStore = create<UIState>((set) => ({
   syncNow: null,
   showAddTransaction: false,
   showFilterPanel: false,
+  assistantTransactionDraft: null,
+  assistantCategoryDraft: null,
+  assistantAccountDraft: null,
+  assistantBudgetDraft: null,
   currency: 'BDT',
   _currencyHydrated: false,
   setSyncing: (isSyncing) => set({ isSyncing }),
@@ -42,6 +96,11 @@ export const useUIStore = create<UIState>((set) => ({
   setSyncNow: (syncNow) => set({ syncNow }),
   setShowAddTransaction: (showAddTransaction) => set({ showAddTransaction }),
   setShowFilterPanel: (showFilterPanel) => set({ showFilterPanel }),
+  setAssistantTransactionDraft: (assistantTransactionDraft) => set({ assistantTransactionDraft }),
+  clearAssistantTransactionDraft: () => set({ assistantTransactionDraft: null }),
+  setAssistantCategoryDraft: (assistantCategoryDraft) => set({ assistantCategoryDraft }),
+  setAssistantAccountDraft: (assistantAccountDraft) => set({ assistantAccountDraft }),
+  setAssistantBudgetDraft: (assistantBudgetDraft) => set({ assistantBudgetDraft }),
   setCurrency: (currency) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('budgetwise_currency', currency);

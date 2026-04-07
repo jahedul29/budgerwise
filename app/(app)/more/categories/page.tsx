@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, ArrowLeft, Tag, Trash2, Edit } from 'lucide-react';
 import Link from 'next/link';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useCategories } from '@/hooks/useCategories';
+import { useUIStore } from '@/store/uiStore';
 import { localDb } from '@/lib/dexie';
 import type { Category, CategoryType } from '@/types';
 import toast from 'react-hot-toast';
@@ -28,6 +29,23 @@ export default function CategoriesPage() {
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
   const [relatedTransactionsCount, setRelatedTransactionsCount] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Consume assistant draft if present
+  const assistantDraft = useUIStore((s) => s.assistantCategoryDraft);
+  const clearDraft = useUIStore((s) => s.setAssistantCategoryDraft);
+  useEffect(() => {
+    if (assistantDraft?.source === 'assistant') {
+      setFormData({
+        name: assistantDraft.name ?? '',
+        icon: assistantDraft.icon ?? '📦',
+        color: assistantDraft.color ?? '#06D6A0',
+        type: (assistantDraft.type ?? 'expense') as CategoryType,
+      });
+      setEditingCategory(null);
+      setShowForm(true);
+      clearDraft(null);
+    }
+  }, [assistantDraft, clearDraft]);
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {

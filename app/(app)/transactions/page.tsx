@@ -11,7 +11,6 @@ import { TransactionCard } from '@/components/transactions/TransactionCard';
 import { FilterPanel } from '@/components/transactions/FilterPanel';
 import { FAB } from '@/components/shared/FAB';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { AddTransactionSheet } from '@/components/transactions/AddTransactionSheet';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useUIStore } from '@/store/uiStore';
@@ -147,7 +146,6 @@ export default function TransactionsPage() {
       </div>
 
       <FAB />
-      <AddTransactionSheet />
     </PageWrapper>
   );
 }

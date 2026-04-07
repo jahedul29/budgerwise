@@ -1,7 +1,7 @@
 'use client';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, List, BarChart3, Target, Settings, CreditCard, Tag } from 'lucide-react';
+import { Home, List, BarChart3, Target, Settings, CreditCard, Tag, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -23,9 +23,14 @@ const secondaryNav = [
   { name: 'Settings', icon: Settings, href: '/more/settings' },
 ];
 
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase();
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useStableUser();
+  const isAdmin = Boolean(ADMIN_EMAIL && user?.email?.trim().toLowerCase() === ADMIN_EMAIL);
+
+  console.log({user, isAdmin, ADMIN_EMAIL})
 
   return (
     <aside className="hidden lg:flex lg:flex-col lg:w-[260px] xl:w-[280px] h-screen sticky top-0 glass-nav border-r border-gray-200/50 dark:border-white/[0.04]">
@@ -104,6 +109,43 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <>
+            <div className="my-4 mx-3 border-t border-gray-200/60 dark:border-white/[0.04]" />
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-amber-500">
+              Admin
+            </p>
+            {[{ name: 'Users', icon: Crown, href: '/admin/users' }].map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 no-tap-highlight group',
+                    isActive
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-navy-400 dark:text-navy-200 hover:text-navy-700 dark:hover:text-white hover:bg-navy-50/50 dark:hover:bg-white/[0.04]'
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebarActive"
+                      className="absolute inset-0 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/50 dark:border-amber-500/20"
+                      transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+                    />
+                  )}
+                  <item.icon className={cn(
+                    'relative z-10 h-[18px] w-[18px] transition-colors',
+                    isActive ? 'text-amber-500' : 'text-navy-300 dark:text-navy-400 group-hover:text-navy-500 dark:group-hover:text-navy-200'
+                  )} />
+                  <span className="relative z-10">{item.name}</span>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* User Profile */}

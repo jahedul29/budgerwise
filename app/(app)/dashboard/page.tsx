@@ -19,7 +19,6 @@ import { useBudgets } from '@/hooks/useBudgets';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCurrency } from '@/hooks/useCurrency';
-import { AddTransactionSheet } from '@/components/transactions/AddTransactionSheet';
 import { useUIStore } from '@/store/uiStore';
 import Link from 'next/link';
 import { Wallet } from 'lucide-react';
@@ -302,7 +301,6 @@ export default function DashboardPage() {
       </motion.div>
 
       <FAB />
-      <AddTransactionSheet />
     </PageWrapper>
   );
 }

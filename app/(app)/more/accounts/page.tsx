@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, ArrowLeft, Wallet } from 'lucide-react';
 import Link from 'next/link';
@@ -12,6 +12,7 @@ import { AccountForm } from '@/components/accounts/AccountForm';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useUIStore } from '@/store/uiStore';
 import { localDb } from '@/lib/dexie';
 import type { Account } from '@/types';
 import toast from 'react-hot-toast';
@@ -25,6 +26,26 @@ export default function AccountsPage() {
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
   const [relatedTransactionsCount, setRelatedTransactionsCount] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [draftAccount, setDraftAccount] = useState<any>(null);
+
+  // Consume assistant draft if present
+  const assistantDraft = useUIStore((s) => s.assistantAccountDraft);
+  const clearDraft = useUIStore((s) => s.setAssistantAccountDraft);
+  useEffect(() => {
+    if (assistantDraft?.source === 'assistant') {
+      setDraftAccount({
+        name: assistantDraft.name ?? '',
+        type: assistantDraft.type ?? 'cash',
+        balance: assistantDraft.balance ?? 0,
+        currency: assistantDraft.currency ?? 'BDT',
+        icon: assistantDraft.icon ?? '💵',
+        color: assistantDraft.color ?? '#10B981',
+      });
+      setEditingAccount(null);
+      setShowForm(true);
+      clearDraft(null);
+    }
+  }, [assistantDraft, clearDraft]);
 
   const handleCreate = async (data: any) => {
     try {
@@ -140,10 +161,11 @@ export default function AccountsPage() {
       </div>
 
       <AccountForm
+        key={editingAccount?.id ?? draftAccount?.name ?? 'new'}
         open={showForm}
-        onClose={() => { setShowForm(false); setEditingAccount(null); }}
+        onClose={() => { setShowForm(false); setEditingAccount(null); setDraftAccount(null); }}
         onSubmit={editingAccount ? handleUpdate : handleCreate}
-        account={editingAccount}
+        account={editingAccount ?? draftAccount}
       />
 
       <Dialog

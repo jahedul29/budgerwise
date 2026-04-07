@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { format, endOfMonth, differenceInDays } from 'date-fns';
 import { Plus, Target } from 'lucide-react';
@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useUIStore } from '@/store/uiStore';
 import toast from 'react-hot-toast';
 
 const stagger = {
@@ -30,6 +31,26 @@ export default function BudgetsPage() {
   const { formatAmount } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingBudget, setEditingBudget] = useState<any>(null);
+  const [draftBudget, setDraftBudget] = useState<any>(null);
+
+  // Consume assistant draft if present
+  const assistantDraft = useUIStore((s) => s.assistantBudgetDraft);
+  const clearDraft = useUIStore((s) => s.setAssistantBudgetDraft);
+  useEffect(() => {
+    if (assistantDraft?.source === 'assistant') {
+      setDraftBudget({
+        categoryId: assistantDraft.categoryId ?? '',
+        categoryName: assistantDraft.categoryName ?? '',
+        amount: assistantDraft.amount ?? '',
+        period: assistantDraft.period ?? 'monthly',
+        month: assistantDraft.month ?? format(new Date(), 'yyyy-MM'),
+        alertThreshold: assistantDraft.alertThreshold ?? 80,
+      });
+      setEditingBudget(null);
+      setShowForm(true);
+      clearDraft(null);
+    }
+  }, [assistantDraft, clearDraft]);
 
   const now = new Date();
   const currentMonth = format(now, 'yyyy-MM');
@@ -169,10 +190,11 @@ export default function BudgetsPage() {
       </motion.div>
 
       <BudgetForm
+        key={editingBudget?.id ?? draftBudget?.categoryId ?? 'new'}
         open={showForm}
-        onClose={() => { setShowForm(false); setEditingBudget(null); }}
+        onClose={() => { setShowForm(false); setEditingBudget(null); setDraftBudget(null); }}
         onSubmit={editingBudget ? handleUpdate : handleCreate}
-        budget={editingBudget}
+        budget={editingBudget ?? draftBudget}
       />
     </PageWrapper>
   );

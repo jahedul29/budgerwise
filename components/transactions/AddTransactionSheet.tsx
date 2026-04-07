@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { VoiceInputButton } from '@/components/shared/VoiceInputButton';
 import { DateTimePicker } from '@/components/transactions/DateTimePicker';
 import type { TransactionType, PaymentMethod } from '@/types';
 import toast from 'react-hot-toast';
@@ -26,7 +25,12 @@ const paymentMethods: { value: PaymentMethod; label: string; icon: string }[] = 
 ];
 
 export function AddTransactionSheet() {
-  const { showAddTransaction, setShowAddTransaction } = useUIStore();
+  const {
+    showAddTransaction,
+    setShowAddTransaction,
+    assistantTransactionDraft,
+    clearAssistantTransactionDraft,
+  } = useUIStore();
   const { addTransaction } = useTransactions();
   const { categories, getCategoriesByType } = useCategories();
   const { accounts, updateBalance } = useAccounts();
@@ -63,6 +67,7 @@ export function AddTransactionSheet() {
     const deltaY = currentY - touchStartYRef.current;
 
     if (deltaY > 72) {
+      clearAssistantTransactionDraft();
       setShowAddTransaction(false);
       touchStartYRef.current = null;
       shouldDismissRef.current = false;
@@ -112,6 +117,7 @@ export function AddTransactionSheet() {
       toast.success('Transaction added!');
       reset();
       setSelectedCategory('');
+      clearAssistantTransactionDraft();
       setShowAddTransaction(false);
     } catch (error) {
       toast.error('Failed to add transaction');
@@ -119,6 +125,35 @@ export function AddTransactionSheet() {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!showAddTransaction || !assistantTransactionDraft) return;
+
+    if (assistantTransactionDraft.amount !== undefined) {
+      setValue('amount', String(assistantTransactionDraft.amount));
+    }
+    if (assistantTransactionDraft.description !== undefined) {
+      setValue('description', assistantTransactionDraft.description);
+    }
+    if (assistantTransactionDraft.notes !== undefined) {
+      setValue('notes', assistantTransactionDraft.notes);
+    }
+    if (assistantTransactionDraft.dateIso) {
+      setValue('date', format(new Date(assistantTransactionDraft.dateIso), "yyyy-MM-dd'T'HH:mm"));
+    }
+    if (assistantTransactionDraft.accountId) {
+      setValue('accountId', assistantTransactionDraft.accountId);
+    }
+    if (assistantTransactionDraft.type) {
+      setType(assistantTransactionDraft.type);
+    }
+    if (assistantTransactionDraft.categoryId) {
+      setSelectedCategory(assistantTransactionDraft.categoryId);
+    }
+    if (assistantTransactionDraft.paymentMethod) {
+      setSelectedPayment(assistantTransactionDraft.paymentMethod);
+    }
+  }, [assistantTransactionDraft, setValue, showAddTransaction]);
 
   return (
     <AnimatePresence>
@@ -129,7 +164,10 @@ export function AddTransactionSheet() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-navy-950/60 backdrop-blur-md"
-            onClick={() => setShowAddTransaction(false)}
+            onClick={() => {
+              clearAssistantTransactionDraft();
+              setShowAddTransaction(false);
+            }}
           />
           <motion.div
             initial={{ y: '100%' }}
@@ -154,15 +192,23 @@ export function AddTransactionSheet() {
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-lg font-display font-bold text-navy-900 dark:text-navy-50">Add Transaction</h2>
                 <div className="flex items-center gap-2">
-                  <VoiceInputButton />
                   <button
-                    onClick={() => setShowAddTransaction(false)}
+                    onClick={() => {
+                      clearAssistantTransactionDraft();
+                      setShowAddTransaction(false);
+                    }}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 dark:hover:bg-white/[0.04] transition-colors"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
+
+              {assistantTransactionDraft?.source === 'assistant' && (
+                <div className="mb-4 rounded-xl border border-primary-200/70 bg-primary-50/80 px-3 py-2 text-xs font-medium text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300">
+                  Parsed from assistant. Please review before saving.
+                </div>
+              )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 {/* Amount */}
