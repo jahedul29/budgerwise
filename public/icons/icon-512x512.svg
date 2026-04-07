@@ -10,8 +10,8 @@
       <stop offset="1" stop-color="white" stop-opacity="0" />
     </radialGradient>
   </defs>
-  <rect x="0" y="0" width="64" height="64" rx="20" fill="url(#icon-512-bg)" />
-  <rect x="0" y="0" width="64" height="64" rx="20" fill="url(#icon-512-shine)" />
+  <rect x="0" y="0" width="64" height="64" fill="url(#icon-512-bg)" />
+  <rect x="0" y="0" width="64" height="64" fill="url(#icon-512-shine)" />
   <path d="M18 44V39" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />
   <path d="M25 44V34" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />
   <path d="M32 44V37" stroke="white" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />

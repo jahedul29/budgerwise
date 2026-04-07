@@ -4,13 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { cn } from '@/lib/utils';
-import toast from 'react-hot-toast';
 
 const MAX_PULL = 96;
 const TRIGGER_PULL = 64;
 
 export function PullToRefresh() {
-  const { syncNow, isOnline, isSyncing, showAddTransaction } = useUIStore();
+  const { showAddTransaction } = useUIStore();
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -41,7 +40,7 @@ export function PullToRefresh() {
     };
 
     const onTouchStart = (event: TouchEvent) => {
-      if (isRefreshing || isSyncing || showAddTransaction) return;
+      if (isRefreshing || showAddTransaction) return;
       if (window.scrollY > 0) return;
 
       const touch = event.touches[0];
@@ -76,17 +75,11 @@ export function PullToRefresh() {
       }
     };
 
-    const triggerRefresh = async () => {
-      if (!syncNow) return;
+    const triggerRefresh = () => {
       setIsRefreshing(true);
       setPullDistance(TRIGGER_PULL);
-      try {
-        const didSync = await syncNow();
-        if (didSync) toast.success('Refreshed');
-        else toast.error('Sync failed');
-      } finally {
-        setIsRefreshing(false);
-      }
+      // Match native browser pull-to-refresh behavior.
+      window.location.reload();
     };
 
     const onTouchEnd = () => {
@@ -95,11 +88,11 @@ export function PullToRefresh() {
         return;
       }
 
-      const shouldRefresh = pullDistance >= TRIGGER_PULL && isOnline && !isSyncing && !showAddTransaction;
+      const shouldRefresh = pullDistance >= TRIGGER_PULL && !showAddTransaction;
       resetGesture();
 
       if (shouldRefresh) {
-        void triggerRefresh();
+        triggerRefresh();
       }
     };
 
@@ -114,7 +107,7 @@ export function PullToRefresh() {
       window.removeEventListener('touchend', onTouchEnd);
       window.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [isOnline, isRefreshing, isSyncing, showAddTransaction, syncNow, pullDistance]);
+  }, [isRefreshing, showAddTransaction, pullDistance]);
 
   const visible = pullDistance > 0 || isRefreshing;
   const progress = Math.min(1, pullDistance / TRIGGER_PULL);
@@ -132,7 +125,7 @@ export function PullToRefresh() {
         <RefreshCw
           className={cn(
             'h-4 w-4 text-primary-500 transition-transform',
-            (isRefreshing || isSyncing) && 'animate-spin',
+            isRefreshing && 'animate-spin',
           )}
           style={{
             opacity,
