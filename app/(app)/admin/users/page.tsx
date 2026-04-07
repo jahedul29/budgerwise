@@ -123,7 +123,7 @@ export default function AdminUsersPage() {
               </div>
               <div>
                 <h1 className="text-xl lg:text-2xl font-display font-bold text-navy-900 dark:text-navy-50">
-                  Admin
+                  Users
                 </h1>
               </div>
             </div>

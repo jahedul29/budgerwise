@@ -3,11 +3,13 @@ import { signOut } from 'next-auth/react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Wallet, Tag, Settings, LogOut, ChevronRight,
+  Wallet, Tag, Settings, LogOut, ChevronRight, Crown,
 } from 'lucide-react';
 import { PageWrapper } from '@/components/layout/PageWrapper';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { clearCachedUserProfile, useStableUser } from '@/hooks/useStableUser';
+
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase();
 
 const menuItems = [
   { label: 'Accounts', icon: Wallet, href: '/more/accounts', color: 'text-accent' },
@@ -27,6 +29,7 @@ const fadeUp = {
 
 export default function MorePage() {
   const { user } = useStableUser();
+  const isAdmin = Boolean(ADMIN_EMAIL && user?.email?.trim().toLowerCase() === ADMIN_EMAIL);
 
   return (
     <PageWrapper>
@@ -74,6 +77,24 @@ export default function MorePage() {
             ))}
           </div>
         </motion.div>
+
+        {/* Admin */}
+        {isAdmin && (
+          <motion.div variants={fadeUp}>
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <Link
+                href="/admin/users"
+                className="flex items-center gap-3.5 px-5 py-4 transition-colors hover:bg-navy-50/50 dark:hover:bg-white/[0.03] group"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10">
+                  <Crown className="h-[18px] w-[18px] text-amber-500" />
+                </div>
+                <span className="flex-1 text-sm font-medium text-navy-800 dark:text-navy-50">Users</span>
+                <ChevronRight className="h-4 w-4 text-navy-300 dark:text-navy-400 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            </div>
+          </motion.div>
+        )}
 
         {/* Sign Out */}
         <motion.div variants={fadeUp}>
