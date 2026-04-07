@@ -17,7 +17,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden glass-nav safe-area-bottom">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden glass-nav border-t border-gray-200/60 dark:border-white/[0.06] safe-area-bottom"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.25rem)' }}
+    >
       <div className="mx-auto flex max-w-lg items-center justify-around px-1 py-1.5">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href || pathname?.startsWith(tab.href + '/');
