@@ -157,7 +157,7 @@ export function AddTransactionSheet() {
                   <VoiceInputButton />
                   <button
                     onClick={() => setShowAddTransaction(false)}
-                    className="p-1.5 rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 dark:hover:bg-white/[0.04] transition-colors"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 dark:hover:bg-white/[0.04] transition-colors"
                   >
                     <X className="h-5 w-5" />
                   </button>

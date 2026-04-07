@@ -296,8 +296,11 @@ export default function SettingsPage() {
   return (
     <PageWrapper>
       <div className="sticky top-0 z-30 glass-nav">
-        <div className="flex items-center gap-3 px-4 py-3 lg:px-8 lg:py-5">
-          <Link href="/more" className="text-navy-400 hover:text-navy-600 dark:hover:text-navy-200 transition-colors lg:hidden">
+        <div className="flex items-center gap-3 px-4 py-2 lg:px-8 lg:py-5">
+          <Link
+            href="/more"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-navy-400 hover:text-navy-600 dark:hover:text-navy-200 transition-colors lg:hidden"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <h1 className="text-xl lg:text-2xl font-display font-bold text-navy-900 dark:text-navy-50">Settings</h1>
