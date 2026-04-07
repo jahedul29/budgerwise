@@ -3,6 +3,15 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { motion } from 'framer-motion';
 import {
+  endOfDay,
+  endOfMonth,
+  format,
+  startOfDay,
+  startOfMonth,
+  subMonths,
+  subYears,
+} from 'date-fns';
+import {
   ArrowLeft, Moon, Sun, Monitor, Download, RefreshCw,
   Trash2, Check, CloudCog, AlertTriangle, Palette, Coins,
   Database, RefreshCcw, FileDown, FileJson, ChevronRight,
@@ -16,11 +25,46 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { currencies } from '@/lib/currency';
 import toast from 'react-hot-toast';
 import { localDb } from '@/lib/dexie';
+import { DateRangePicker, type DateRange } from '@/components/shared/DateRangePicker';
+import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 
 const popularCurrencies = [
   'USD', 'EUR', 'GBP', 'BDT', 'INR', 'JPY',
   'CAD', 'AUD', 'SGD', 'AED', 'SAR', 'CNY',
 ];
+
+const deleteRangePresets = [
+  {
+    id: 'last_month',
+    label: 'Last month',
+    description: 'The previous calendar month',
+    getRange: (): DateRange => {
+      const previousMonth = subMonths(new Date(), 1);
+      return {
+        start: startOfMonth(previousMonth),
+        end: endOfMonth(previousMonth),
+      };
+    },
+  },
+  {
+    id: 'last_6_months',
+    label: 'Last 6 months',
+    description: 'From the start of the month, 5 months ago',
+    getRange: (): DateRange => ({
+      start: startOfMonth(subMonths(new Date(), 5)),
+      end: endOfDay(new Date()),
+    }),
+  },
+  {
+    id: 'last_year',
+    label: 'Last year',
+    description: 'The trailing 12 months up to today',
+    getRange: (): DateRange => ({
+      start: startOfDay(subYears(new Date(), 1)),
+      end: endOfDay(new Date()),
+    }),
+  },
+] as const;
 
 const stagger = {
   hidden: { opacity: 0 },
@@ -34,12 +78,48 @@ const fadeUp = {
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { syncStatus, syncError, lastSyncTime, syncNow, isSyncing } = useUIStore();
+  const { syncStatus, syncError, lastSyncTime, syncNow, isSyncing, isOnline } = useUIStore();
   const { currency, setCurrency, symbol } = useCurrency();
   const [mounted, setMounted] = useState(false);
   const [showAllCurrencies, setShowAllCurrencies] = useState(false);
+  const [deleteRange, setDeleteRange] = useState<DateRange | undefined>(() => deleteRangePresets[0].getRange());
+  const [activeDeletePreset, setActiveDeletePreset] = useState<string>(deleteRangePresets[0].id);
+  const [deletePreviewCount, setDeletePreviewCount] = useState<number | null>(null);
+  const [isClearingRange, setIsClearingRange] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDeletePreview = async () => {
+      if (!deleteRange) {
+        if (!cancelled) {
+          setDeletePreviewCount(null);
+        }
+        return;
+      }
+
+      const count = await localDb.transactions
+        .where('date')
+        .between(deleteRange.start, deleteRange.end, true, true)
+        .count();
+
+      if (!cancelled) {
+        setDeletePreviewCount(count);
+      }
+    };
+
+    loadDeletePreview().catch(() => {
+      if (!cancelled) {
+        setDeletePreviewCount(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deleteRange]);
 
   const handleExportCSV = async () => {
     try {
@@ -89,6 +169,112 @@ export default function SettingsPage() {
       toast.success('All data cleared');
       window.location.reload();
     } catch { toast.error('Failed to clear data'); }
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    const preset = deleteRangePresets.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    setActiveDeletePreset(presetId);
+    setDeleteRange(preset.getRange());
+  };
+
+  const handleDeleteRangeChange = (range: DateRange | undefined) => {
+    setActiveDeletePreset('custom');
+    setDeleteRange(range);
+  };
+
+  const handleClearRangeData = async () => {
+    if (!deleteRange) {
+      toast.error('Select a date range first');
+      return;
+    }
+
+    if (!isOnline) {
+      toast.error('Go online first so local and database data are cleared together');
+      return;
+    }
+
+    const matchingTransactions = await localDb.transactions
+      .where('date')
+      .between(deleteRange.start, deleteRange.end, true, true)
+      .toArray();
+
+    if (matchingTransactions.length === 0) {
+      toast.error('No transactions found in that range');
+      return;
+    }
+
+    const startLabel = format(deleteRange.start, 'MMM d, yyyy');
+    const endLabel = format(deleteRange.end, 'MMM d, yyyy');
+    const confirmed = confirm(
+      `Delete ${matchingTransactions.length} transaction${matchingTransactions.length === 1 ? '' : 's'} from ${startLabel} to ${endLabel}? This will also update account balances and remove the same records from your database.`,
+    );
+
+    if (!confirmed) return;
+
+    setIsClearingRange(true);
+
+    try {
+      const balanceAdjustments = new Map<string, number>();
+
+      for (const transaction of matchingTransactions) {
+        if (!transaction.accountId) continue;
+
+        const delta =
+          transaction.type === 'expense'
+            ? transaction.amount
+            : transaction.type === 'income'
+              ? -transaction.amount
+              : 0;
+
+        if (delta !== 0) {
+          balanceAdjustments.set(
+            transaction.accountId,
+            (balanceAdjustments.get(transaction.accountId) ?? 0) + delta,
+          );
+        }
+      }
+
+      const response = await fetch('/api/transactions/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: deleteRange.start.toISOString(),
+          endDate: deleteRange.end.toISOString(),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Failed to clear database data');
+      }
+
+      await localDb.transaction('rw', localDb.transactions, localDb.accounts, async () => {
+        await localDb.transactions
+          .where('date')
+          .between(deleteRange.start, deleteRange.end, true, true)
+          .delete();
+
+        for (const [accountId, delta] of balanceAdjustments) {
+          const account = await localDb.accounts.get(accountId);
+          if (!account) continue;
+
+          await localDb.accounts.update(accountId, {
+            balance: account.balance + delta,
+            _syncStatus: 'pending_update',
+          });
+        }
+      });
+
+      window.dispatchEvent(new CustomEvent(SYNC_COMPLETE_EVENT));
+      toast.success(`Cleared ${matchingTransactions.length} transaction${matchingTransactions.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to clear selected data');
+    } finally {
+      setIsClearingRange(false);
+    }
   };
 
   const handleManualSync = async () => {
@@ -362,7 +548,74 @@ export default function SettingsPage() {
           </div>
 
           {/* Danger zone */}
-          <div className="mt-3">
+          <div className="mt-3 space-y-3">
+            <div className="rounded-2xl border border-expense/15 bg-expense/[0.03] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-expense">Clear Transactions By Date Range</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-expense/70">
+                    Remove selected transactions locally and from Firebase at the same time.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-expense/70">
+                  Danger
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {deleteRangePresets.map((preset) => {
+                  const isActive = activeDeletePreset === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleDeletePreset(preset.id)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-expense text-white shadow-sm'
+                          : 'bg-white/80 text-expense/80 hover:bg-white'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3">
+                <DateRangePicker
+                  inline
+                  value={deleteRange}
+                  onChange={handleDeleteRangeChange}
+                />
+              </div>
+
+              <div className="mt-3 rounded-xl bg-white/70 px-3.5 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-expense/60">
+                  Selected Range
+                </p>
+                <p className="mt-1 text-sm font-semibold text-navy-800 dark:text-navy-50">
+                  {deleteRange
+                    ? `${format(deleteRange.start, 'MMM d, yyyy')} - ${format(deleteRange.end, 'MMM d, yyyy')}`
+                    : 'Choose a custom range'}
+                </p>
+                <p className="mt-1 text-[11px] text-navy-500 dark:text-navy-300">
+                  {deletePreviewCount === null
+                    ? 'Pick a range to preview matching transactions.'
+                    : `${deletePreviewCount} transaction${deletePreviewCount === 1 ? '' : 's'} will be removed.`}
+                </p>
+              </div>
+
+              <Button
+                onClick={handleClearRangeData}
+                disabled={!deleteRange || !deletePreviewCount || isClearingRange}
+                className="mt-3 h-11 w-full rounded-xl border-0 bg-expense text-white hover:bg-expense-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {isClearingRange ? 'Clearing selected data...' : 'Clear Selected Range'}
+              </Button>
+            </div>
+
             <button
               onClick={handleClearData}
               className="flex w-full items-center gap-3.5 rounded-2xl border-2 border-dashed border-expense/20 hover:border-expense/40 px-4 py-3.5 text-left transition-all hover:bg-expense/[0.03] group"
@@ -371,8 +624,8 @@ export default function SettingsPage() {
                 <Trash2 className="h-4.5 w-4.5 text-expense/70 group-hover:text-expense transition-colors" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-expense/80 group-hover:text-expense transition-colors">Clear All Data</p>
-                <p className="text-[11px] text-expense/40 group-hover:text-expense/60 transition-colors mt-0.5">Permanently delete everything locally</p>
+                <p className="text-sm font-semibold text-expense/80 group-hover:text-expense transition-colors">Clear All Local Data</p>
+                <p className="text-[11px] text-expense/40 group-hover:text-expense/60 transition-colors mt-0.5">Permanently delete everything stored on this device</p>
               </div>
             </button>
           </div>

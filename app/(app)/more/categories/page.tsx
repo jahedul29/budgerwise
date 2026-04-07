@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useCategories } from '@/hooks/useCategories';
-import type { CategoryType } from '@/types';
+import { localDb } from '@/lib/dexie';
+import type { Category, CategoryType } from '@/types';
 import toast from 'react-hot-toast';
 
 const colors = ['#F97316', '#3B82F6', '#8B5CF6', '#EF4444', '#EC4899', '#F59E0B', '#10B981', '#06D6A0', '#14B8A6', '#64748B', '#A855F7', '#F43F5E'];
@@ -23,6 +24,10 @@ export default function CategoriesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', icon: '📦', color: '#06D6A0', type: 'expense' as CategoryType });
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+  const [relatedTransactionsCount, setRelatedTransactionsCount] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
@@ -45,12 +50,32 @@ export default function CategoriesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const openDeleteDialog = async (category: Category) => {
+    const txCount = await localDb.transactions
+      .where('categoryId')
+      .equals(category.id)
+      .and((tx) => tx._syncStatus !== 'pending_delete')
+      .count();
+
+    setDeletingCategory(category);
+    setRelatedTransactionsCount(txCount);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingCategory) return;
+
+    setIsDeleting(true);
     try {
-      await deleteCategory(id);
+      await deleteCategory(deletingCategory.id);
       toast.success('Category deleted');
+      setShowDeleteDialog(false);
+      setDeletingCategory(null);
+      setRelatedTransactionsCount(0);
     } catch (err) {
       toast.error('Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -95,11 +120,9 @@ export default function CategoriesPage() {
               <button onClick={() => openEdit(cat)} className="rounded-lg p-1.5 text-navy-300 hover:bg-navy-50 dark:hover:bg-white/[0.04] hover:text-navy-600 dark:hover:text-navy-100 transition-colors">
                 <Edit className="h-3.5 w-3.5" />
               </button>
-              {!cat.isDefault && (
-                <button onClick={() => handleDelete(cat.id)} className="rounded-lg p-1.5 text-navy-300 hover:bg-expense/10 hover:text-expense transition-colors">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
+              <button onClick={() => openDeleteDialog(cat)} className="rounded-lg p-1.5 text-navy-300 hover:bg-expense/10 hover:text-expense transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           </motion.div>
         ))}
@@ -215,6 +238,53 @@ export default function CategoriesPage() {
               <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1 rounded-xl">Cancel</Button>
               <Button onClick={handleSubmit} className="flex-1 rounded-xl gradient-primary text-white border-0">{editingCategory ? 'Update' : 'Create'}</Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) {
+            setDeletingCategory(null);
+            setRelatedTransactionsCount(0);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete Category</DialogTitle>
+            <DialogDescription>
+              {deletingCategory
+                ? `Are you sure you want to delete "${deletingCategory.name}"?`
+                : 'Are you sure you want to delete this category?'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {relatedTransactionsCount > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning-dark dark:text-warning">
+              This category is used in {relatedTransactionsCount} transaction{relatedTransactionsCount === 1 ? '' : 's'}.
+              Those transactions will remain, but this category will no longer appear in your category list.
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              className="flex-1 rounded-xl"
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDelete}
+              className="flex-1 rounded-xl bg-expense hover:bg-expense-dark text-white border-0"
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Category'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

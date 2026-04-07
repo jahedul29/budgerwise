@@ -6,11 +6,14 @@ import Link from 'next/link';
 import { PageWrapper } from '@/components/layout/PageWrapper';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AccountCard } from '@/components/accounts/AccountCard';
 import { AccountForm } from '@/components/accounts/AccountForm';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrency } from '@/hooks/useCurrency';
+import { localDb } from '@/lib/dexie';
+import type { Account } from '@/types';
 import toast from 'react-hot-toast';
 
 export default function AccountsPage() {
@@ -18,6 +21,10 @@ export default function AccountsPage() {
   const { formatAmount } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
+  const [relatedTransactionsCount, setRelatedTransactionsCount] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleCreate = async (data: any) => {
     try {
@@ -39,12 +46,32 @@ export default function AccountsPage() {
     setEditingAccount(null);
   };
 
-  const handleDelete = async (id: string) => {
+  const openDeleteDialog = async (account: Account) => {
+    const txCount = await localDb.transactions
+      .where('accountId')
+      .equals(account.id)
+      .and((tx) => tx._syncStatus !== 'pending_delete')
+      .count();
+
+    setDeletingAccount(account);
+    setRelatedTransactionsCount(txCount);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingAccount) return;
+
+    setIsDeleting(true);
     try {
-      await deleteAccount(id);
+      await deleteAccount(deletingAccount.id);
       toast.success('Account deleted');
+      setShowDeleteDialog(false);
+      setDeletingAccount(null);
+      setRelatedTransactionsCount(0);
     } catch (err) {
-      toast.error('Failed to delete');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -101,7 +128,7 @@ export default function AccountsPage() {
                 <AccountCard
                   account={acc}
                   onEdit={() => { setEditingAccount(acc); setShowForm(true); }}
-                  onDelete={() => handleDelete(acc.id)}
+                  onDelete={() => openDeleteDialog(acc)}
                 />
               </motion.div>
             ))}
@@ -115,6 +142,53 @@ export default function AccountsPage() {
         onSubmit={editingAccount ? handleUpdate : handleCreate}
         account={editingAccount}
       />
+
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) {
+            setDeletingAccount(null);
+            setRelatedTransactionsCount(0);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete Account</DialogTitle>
+            <DialogDescription>
+              {deletingAccount
+                ? `Are you sure you want to delete "${deletingAccount.name}"?`
+                : 'Are you sure you want to delete this account?'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {relatedTransactionsCount > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning-dark dark:text-warning">
+              This account is used in {relatedTransactionsCount} transaction{relatedTransactionsCount === 1 ? '' : 's'}.
+              Those transactions will remain for history, but this account will be removed.
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              className="flex-1 rounded-xl"
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDelete}
+              className="flex-1 rounded-xl bg-expense hover:bg-expense-dark text-white border-0"
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Account'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageWrapper>
   );
 }

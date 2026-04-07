@@ -187,7 +187,7 @@ export default function DashboardPage() {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.2 + i * 0.05, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                  className="w-44 lg:w-48 shrink-0 glass-card rounded-2xl p-4 hover-lift cursor-pointer group"
+                  className="w-[calc((100vw-2.75rem)/2)] sm:w-44 lg:w-48 shrink-0 glass-card rounded-2xl p-4 hover-lift cursor-pointer group"
                 >
                   <span className="text-2xl">{account.icon}</span>
                   <p className="mt-2 text-xs font-medium text-navy-400 dark:text-navy-300 truncate">{account.name}</p>

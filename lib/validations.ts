@@ -31,7 +31,7 @@ export const budgetSchema = z.object({
 
 export const accountSchema = z.object({
   name: z.string().min(1, "Account name is required"),
-  type: z.enum(["cash", "mobile_banking", "bank", "credit_card"]),
+  type: z.enum(["cash", "mobile_banking", "bank", "credit_card", "loan"]),
   balance: z.number(),
   currency: z.string().min(1),
   color: z.string(),

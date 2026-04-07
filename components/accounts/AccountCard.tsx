@@ -16,6 +16,7 @@ export function AccountCard({ account, onEdit, onDelete }: AccountCardProps) {
     mobile_banking: 'Mobile Banking',
     bank: 'Bank Account',
     credit_card: 'Credit Card',
+    loan: 'Loan',
   };
 
   return (

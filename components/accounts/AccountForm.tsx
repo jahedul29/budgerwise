@@ -11,6 +11,7 @@ const accountTypes: { value: AccountType; label: string; icon: string }[] = [
   { value: 'mobile_banking', label: 'Mobile Banking', icon: '📱' },
   { value: 'bank', label: 'Bank', icon: '🏦' },
   { value: 'credit_card', label: 'Credit Card', icon: '💳' },
+  { value: 'loan', label: 'Loan', icon: '📉' },
 ];
 
 const colors = ['#10B981', '#3B82F6', '#8B5CF6', '#F97316', '#EC4899', '#6366F1', '#F43F5E', '#14B8A6'];

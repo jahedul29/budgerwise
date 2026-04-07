@@ -12,6 +12,49 @@ export function useCategories() {
   const [isLoading, setIsLoading] = useState(true);
   const { isOnline, lastSyncTime, syncStatus } = useUIStore();
 
+  const dedupeDefaultCategories = useCallback(async (cats: Category[]) => {
+    const defaultGroups = new Map<string, Category[]>();
+
+    for (const category of cats) {
+      if (!category.isDefault) continue;
+
+      const key = `${category.type}:${category.name.trim().toLowerCase()}`;
+      const group = defaultGroups.get(key) ?? [];
+      group.push(category);
+      defaultGroups.set(key, group);
+    }
+
+    const duplicates: Category[] = [];
+
+    for (const group of defaultGroups.values()) {
+      if (group.length <= 1) continue;
+
+      group.sort((a, b) => {
+        const sa = a._syncStatus === 'synced' ? 0 : 1;
+        const sb = b._syncStatus === 'synced' ? 0 : 1;
+        if (sa !== sb) return sa - sb;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+
+      duplicates.push(...group.slice(1));
+    }
+
+    if (duplicates.length === 0) {
+      return cats;
+    }
+
+    for (const duplicate of duplicates) {
+      if (duplicate._syncStatus === 'pending_create') {
+        await localDb.categories.delete(duplicate.id);
+      } else {
+        await localDb.categories.update(duplicate.id, { _syncStatus: 'pending_delete' });
+      }
+    }
+
+    const duplicateIds = new Set(duplicates.map((category) => category.id));
+    return cats.filter((category) => !duplicateIds.has(category.id));
+  }, []);
+
   const loadCategories = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -27,17 +70,18 @@ export function useCategories() {
         }
 
         const defaults = createDefaultCategories();
-        await localDb.categories.bulkAdd(defaults);
+        await localDb.categories.bulkPut(defaults);
         cats = defaults;
       }
 
-      setCategories(cats);
+      const normalizedCats = await dedupeDefaultCategories(cats);
+      setCategories(normalizedCats);
     } catch (error) {
       console.error('Failed to load categories:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [isOnline, lastSyncTime, syncStatus]);
+  }, [isOnline, lastSyncTime, syncStatus, dedupeDefaultCategories]);
 
   useEffect(() => {
     loadCategories();

@@ -137,13 +137,16 @@ export function AddTransactionSheet() {
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
             ref={sheetRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white dark:bg-surface-elevated lg:left-auto lg:right-0 lg:w-[480px] lg:rounded-tl-3xl lg:rounded-tr-none"
+            className="fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] overflow-y-auto overscroll-contain rounded-t-3xl bg-white dark:bg-surface-elevated lg:left-auto lg:right-0 lg:w-[480px] lg:rounded-tl-3xl lg:rounded-tr-none"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {/* Drag Handle */}
-            <div className="sticky top-0 z-10 flex justify-center bg-white/80 backdrop-blur-xl pt-3 pb-2 dark:bg-surface-elevated/80 lg:hidden">
+            <div
+              className="sticky top-0 z-10 flex justify-center bg-white/80 backdrop-blur-xl pt-3 pb-2 dark:bg-surface-elevated/80 lg:hidden"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               <div className="h-1.5 w-12 rounded-full bg-navy-200 dark:bg-navy-600" />
             </div>
 

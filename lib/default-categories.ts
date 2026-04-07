@@ -1,5 +1,4 @@
 import type { Category } from '@/types';
-import { generateId } from './utils';
 
 export const defaultExpenseCategories: Omit<Category, 'id' | 'createdAt' | '_syncStatus'>[] = [
   { name: 'Food', icon: '🍔', color: '#F97316', type: 'expense', isDefault: true },
@@ -26,11 +25,15 @@ export const defaultIncomeCategories: Omit<Category, 'id' | 'createdAt' | '_sync
   { name: 'Other Income', icon: '💵', color: '#64748B', type: 'income', isDefault: true },
 ];
 
+function toSlug(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
 export function createDefaultCategories(): Category[] {
   const now = new Date();
   return [...defaultExpenseCategories, ...defaultIncomeCategories].map(cat => ({
     ...cat,
-    id: generateId(),
+    id: `default-${cat.type}-${toSlug(cat.name)}`,
     createdAt: now,
     _syncStatus: 'pending_create' as const,
   }));

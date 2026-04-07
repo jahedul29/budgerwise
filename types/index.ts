@@ -1,7 +1,7 @@
 export type TransactionType = 'income' | 'expense' | 'transfer';
 export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'mobile_banking' | 'other';
 export type SyncStatus = 'synced' | 'pending_create' | 'pending_update' | 'pending_delete';
-export type AccountType = 'cash' | 'mobile_banking' | 'bank' | 'credit_card';
+export type AccountType = 'cash' | 'mobile_banking' | 'bank' | 'credit_card' | 'loan';
 export type BudgetPeriod = 'monthly' | 'weekly' | 'yearly';
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type CategoryType = 'income' | 'expense';

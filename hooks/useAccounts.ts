@@ -1,15 +1,102 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
 import { useUIStore } from '@/store/uiStore';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
-import type { Account, AccountType } from '@/types';
+import { useSession } from 'next-auth/react';
+import type { Account } from '@/types';
+
+type PreferencesResponse = {
+  preferences?: {
+    accountsSeeded?: boolean;
+  };
+};
 
 export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { isOnline, lastSyncTime, syncStatus } = useUIStore();
+  const { isOnline, lastSyncTime, syncStatus, syncNow } = useUIStore();
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+  const seedCheckedUserRef = useRef<string | null>(null);
+
+  const createDefaultAccounts = useCallback((): Account[] => {
+    const now = new Date();
+    return [
+      {
+        id: 'default-account-cash',
+        name: 'Cash',
+        type: 'cash',
+        balance: 0,
+        currency: 'BDT',
+        color: '#10B981',
+        icon: '💵',
+        createdAt: now,
+        _syncStatus: 'pending_create',
+      },
+      {
+        id: 'default-account-bank',
+        name: 'Bank',
+        type: 'bank',
+        balance: 0,
+        currency: 'BDT',
+        color: '#3B82F6',
+        icon: '🏦',
+        createdAt: now,
+        _syncStatus: 'pending_create',
+      },
+      {
+        id: 'default-account-loan',
+        name: 'Loan',
+        type: 'loan',
+        balance: 0,
+        currency: 'BDT',
+        color: '#F59E0B',
+        icon: '📉',
+        createdAt: now,
+        _syncStatus: 'pending_create',
+      },
+    ];
+  }, []);
+
+  const ensureSeededDefaults = useCallback(async (): Promise<Account[]> => {
+    if (!userId) {
+      return [];
+    }
+
+    if (seedCheckedUserRef.current === userId) {
+      return [];
+    }
+
+    const response = await fetch('/api/preferences');
+    const data = await response.json().catch(() => null) as PreferencesResponse | null;
+    const isAlreadySeeded = Boolean(data?.preferences?.accountsSeeded);
+
+    seedCheckedUserRef.current = userId;
+
+    if (isAlreadySeeded) {
+      return [];
+    }
+
+    const defaults = createDefaultAccounts();
+    await localDb.accounts.bulkPut(defaults);
+
+    await fetch('/api/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accountsSeeded: true,
+        accountsSeededAt: new Date().toISOString(),
+      }),
+    });
+
+    if (syncNow && isOnline) {
+      await syncNow();
+    }
+
+    return defaults;
+  }, [createDefaultAccounts, isOnline, syncNow, userId]);
 
   const loadAccounts = useCallback(async () => {
     setIsLoading(true);
@@ -20,24 +107,16 @@ export function useAccounts() {
         .toArray();
 
       if (accs.length === 0) {
-        if (isOnline && !lastSyncTime && syncStatus !== 'error') {
+        const canInitializeDefaults = isOnline && Boolean(lastSyncTime) && syncStatus !== 'error';
+        if (!canInitializeDefaults) {
           setAccounts([]);
           return;
         }
 
-        const defaultAccount: Account = {
-          id: generateId(),
-          name: 'Cash',
-          type: 'cash',
-          balance: 0,
-          currency: 'BDT',
-          color: '#10B981',
-          icon: '💵',
-          createdAt: new Date(),
-          _syncStatus: 'pending_create',
-        };
-        await localDb.accounts.add(defaultAccount);
-        accs = [defaultAccount];
+        const seeded = await ensureSeededDefaults();
+        if (seeded.length > 0) {
+          accs = seeded;
+        }
       }
 
       setAccounts(accs);
@@ -46,11 +125,21 @@ export function useAccounts() {
     } finally {
       setIsLoading(false);
     }
-  }, [isOnline, lastSyncTime, syncStatus]);
+  }, [isOnline, lastSyncTime, syncStatus, ensureSeededDefaults]);
 
   useEffect(() => {
     loadAccounts();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    if (!userId) {
+      seedCheckedUserRef.current = null;
+      return;
+    }
+    if (seedCheckedUserRef.current !== userId) {
+      seedCheckedUserRef.current = null;
+    }
+  }, [userId]);
 
   useEffect(() => {
     const handleSyncComplete = () => {
@@ -79,9 +168,18 @@ export function useAccounts() {
   }, []);
 
   const deleteAccount = useCallback(async (id: string) => {
-    await localDb.accounts.update(id, { _syncStatus: 'pending_delete' });
+    if (isOnline) {
+      const response = await fetch(`/api/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Failed to delete account from database');
+      }
+      await localDb.accounts.delete(id);
+    } else {
+      await localDb.accounts.update(id, { _syncStatus: 'pending_delete' });
+    }
     setAccounts(prev => prev.filter(a => a.id !== id));
-  }, []);
+  }, [isOnline]);
 
   const updateBalance = useCallback(async (id: string, amount: number) => {
     const account = accounts.find(a => a.id === id);

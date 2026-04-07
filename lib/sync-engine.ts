@@ -117,14 +117,32 @@ export class SyncEngine {
     for (const tableName of tables) {
       const table = localDb[tableName];
       const remoteRecords = response.data[tableName] ?? [];
+      const remoteIds = new Set<string>();
 
       for (const remoteRecord of remoteRecords) {
         const remote = normalizeRecordForClient(remoteRecord as unknown as Record<string, unknown>);
-        const local = await table.get((remote as { id: string }).id);
+        const remoteId = (remote as { id: string }).id;
+        remoteIds.add(remoteId);
+        const local = await table.get(remoteId);
         if (!local) {
           await table.add(remote as never);
         } else if (local._syncStatus === 'synced') {
           await table.put(remote as never);
+        }
+      }
+
+      const localRecords = await table.toArray();
+      for (const localRecord of localRecords) {
+        const localId = (localRecord as { id: string }).id;
+        const localSyncStatus = (localRecord as { _syncStatus?: string })._syncStatus;
+
+        if (remoteIds.has(localId)) {
+          continue;
+        }
+
+        // Clean up tombstones and local records that no longer exist remotely.
+        if (localSyncStatus === 'pending_delete' || localSyncStatus === 'synced' || !localSyncStatus) {
+          await table.delete(localId);
         }
       }
     }
