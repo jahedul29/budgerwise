@@ -1,13 +1,13 @@
 'use client';
-import { useSession } from 'next-auth/react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSync } from '@/hooks/useSync';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { useStableUser } from '@/hooks/useStableUser';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
+  const { userId } = useStableUser();
   useOnlineStatus();
-  useSync(session?.user?.id);
+  useSync(userId);
 
   return (
     <>

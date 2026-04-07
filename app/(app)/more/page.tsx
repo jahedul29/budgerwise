@@ -1,5 +1,5 @@
 'use client';
-import { useSession, signOut } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PageWrapper } from '@/components/layout/PageWrapper';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { clearCachedUserProfile, useStableUser } from '@/hooks/useStableUser';
 
 const menuItems = [
   { label: 'Accounts', icon: Wallet, href: '/more/accounts', color: 'text-accent' },
@@ -25,8 +26,7 @@ const fadeUp = {
 };
 
 export default function MorePage() {
-  const { data: session } = useSession();
-  const user = session?.user;
+  const { user } = useStableUser();
 
   return (
     <PageWrapper>
@@ -78,7 +78,10 @@ export default function MorePage() {
         {/* Sign Out */}
         <motion.div variants={fadeUp}>
           <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            onClick={() => {
+              clearCachedUserProfile();
+              signOut({ callbackUrl: '/login' });
+            }}
             className="flex w-full items-center gap-3.5 rounded-2xl border border-expense/15 bg-expense/5 px-5 py-4 text-sm font-semibold text-expense transition-all hover:bg-expense/10 hover:border-expense/25 group"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-expense/10">

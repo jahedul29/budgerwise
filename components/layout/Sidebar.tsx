@@ -1,6 +1,5 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Home, List, BarChart3, Target, Settings, CreditCard, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,6 +8,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { SyncIndicator } from '@/components/shared/SyncIndicator';
 import { LogoMark } from '@/components/brand/LogoMark';
 import { SignOutButton } from '@/components/shared/SignOutButton';
+import { useStableUser } from '@/hooks/useStableUser';
 
 const mainNav = [
   { name: 'Dashboard', icon: Home, href: '/dashboard' },
@@ -25,8 +25,7 @@ const secondaryNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const user = session?.user;
+  const { user } = useStableUser();
 
   return (
     <aside className="hidden lg:flex lg:flex-col lg:w-[260px] xl:w-[280px] h-screen sticky top-0 glass-nav border-r border-gray-200/50 dark:border-white/[0.04]">

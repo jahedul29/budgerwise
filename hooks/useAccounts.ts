@@ -4,8 +4,8 @@ import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
 import { useUIStore } from '@/store/uiStore';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
-import { useSession } from 'next-auth/react';
 import type { Account } from '@/types';
+import { useStableUser } from './useStableUser';
 
 type PreferencesResponse = {
   preferences?: {
@@ -17,8 +17,7 @@ export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { isOnline, lastSyncTime, syncStatus, syncNow } = useUIStore();
-  const { data: session } = useSession();
-  const userId = session?.user?.id;
+  const { userId } = useStableUser();
   const seedCheckedUserRef = useRef<string | null>(null);
 
   const createDefaultAccounts = useCallback((): Account[] => {

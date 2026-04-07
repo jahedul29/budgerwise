@@ -1,15 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { SyncIndicator } from '@/components/shared/SyncIndicator';
 import { SignOutButton } from '@/components/shared/SignOutButton';
 import { getGreeting } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useStableUser } from '@/hooks/useStableUser';
 
 export function Header() {
-  const { data: session } = useSession();
-  const user = session?.user;
+  const { user } = useStableUser();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
