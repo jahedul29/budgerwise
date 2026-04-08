@@ -34,6 +34,26 @@ const openAIResponseSchema = z.object({
   })).min(1),
 });
 
+function extractUsage(raw: Record<string, unknown>): OpenAITokenUsage {
+  const usage = raw?.usage as Record<string, unknown> | undefined;
+  if (!usage || typeof usage !== 'object') {
+    return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  }
+
+  // Handle both legacy (prompt_tokens/completion_tokens) and new (input_tokens/output_tokens)
+  const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
+  const outputTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
+  const totalTokens = Number(usage.total_tokens ?? 0) || (inputTokens + outputTokens);
+
+  return { inputTokens, outputTokens, totalTokens };
+}
+
+export interface OpenAITokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 export async function parseWithOpenAI(params: {
   text: string;
   locale?: string;
@@ -114,54 +134,60 @@ export async function parseWithOpenAI(params: {
     },
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
   const run = async () => {
-    const response = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => '');
-      throw new Error(`OpenAI parse failed (${response.status}): ${err}`);
+    try {
+      const response = await fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(`OpenAI parse failed (${response.status}): ${err}`);
+      }
+
+      const rawJson = await response.json();
+      const payload = openAIResponseSchema.parse(rawJson);
+      const content = payload.choices[0]?.message?.content ?? '{}';
+      const parsed = JSON.parse(extractJson(content));
+      const normalized = assistantLLMParseSchema.parse(parsed);
+      const intent = assistantIntentSchema.parse(normalized.intent);
+      const { entity, operation } = intentEntityOperation(intent);
+
+      const tokenUsage = extractUsage(rawJson as Record<string, unknown>);
+
+      return {
+        intent,
+        entity,
+        operation,
+        confidence: normalized.confidence,
+        fields: normalized.fields,
+        missingFields: normalized.missingFields,
+        tokenUsage,
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const payload = openAIResponseSchema.parse(await response.json());
-    const content = payload.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(extractJson(content));
-    const normalized = assistantLLMParseSchema.parse(parsed);
-    const intent = assistantIntentSchema.parse(normalized.intent);
-    const { entity, operation } = intentEntityOperation(intent);
-
-    return {
-      intent,
-      entity,
-      operation,
-      confidence: normalized.confidence,
-      fields: normalized.fields,
-      missingFields: normalized.missingFields,
-    };
   };
 
   try {
     return await run();
-  } catch (error) {
-    // Single retry for idempotent parse calls.
+  } catch {
+    // Single retry for idempotent parse calls — fresh AbortController per attempt.
     return await run();
-  } finally {
-    clearTimeout(timeout);
   }
 }

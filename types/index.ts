@@ -83,3 +83,56 @@ export interface Account {
   createdAt: Date;
   _syncStatus?: SyncStatus;
 }
+
+/* ─── AI Token Usage ─── */
+
+export type AiUsageStatus = 'success' | 'error' | 'fallback';
+export type AiFeature = 'assistant_parse' | 'assistant_chat' | 'voice_transcription';
+
+export interface AiGlobalSettings {
+  defaultMonthlyTokenLimit: number;
+  defaultAiHardStop: boolean;
+  /** Manually entered from OpenAI dashboard for cross-check */
+  openaiReportedTokens?: number | null;
+  openaiReportedMonth?: string | null;
+}
+
+export interface AiUsageLedgerEntry {
+  id?: string;
+  userId: string;
+  timestamp: string;
+  month: string; // YYYY-MM
+  model: string;
+  provider: string;
+  feature: AiFeature;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  requestId: string;
+  status: AiUsageStatus;
+}
+
+export interface AiUsageMonthlyAggregate {
+  userId: string;
+  month: string; // YYYY-MM
+  inputTokensUsed: number;
+  outputTokensUsed: number;
+  totalTokensUsed: number;
+  requestCount: number;
+  lastUsedAt: string;
+}
+
+export interface AiUsageSummary {
+  totalTokensUsed: number;
+  /** null when isUnlimited is true */
+  tokenLimit: number | null;
+  /** null when isUnlimited is true */
+  remaining: number | null;
+  /** 0-1 decimal (e.g. 0.75 = 75%). 0 when unlimited. */
+  usagePercent: number;
+  requestCount: number;
+  lastUsedAt?: string;
+  isUnlimited: boolean;
+  isCustomLimit: boolean;
+  hardStopEnabled: boolean;
+}

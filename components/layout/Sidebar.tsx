@@ -30,7 +30,6 @@ export function Sidebar() {
   const { user } = useStableUser();
   const isAdmin = Boolean(ADMIN_EMAIL && user?.email?.trim().toLowerCase() === ADMIN_EMAIL);
 
-  console.log({user, isAdmin, ADMIN_EMAIL})
 
   return (
     <aside className="hidden lg:flex lg:flex-col lg:w-[260px] xl:w-[280px] h-screen sticky top-0 glass-nav border-r border-gray-200/50 dark:border-white/[0.04]">

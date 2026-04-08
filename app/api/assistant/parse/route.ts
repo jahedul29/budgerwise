@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { adminDb, isFirebaseAdminConfigured } from '@/lib/firebase-admin';
-import { parseWithOpenAI } from '@/lib/assistant/openai-parser';
+import { parseWithOpenAI, type OpenAITokenUsage } from '@/lib/assistant/openai-parser';
+import { assertWithinTokenLimit, recordAiUsage } from '@/lib/ai-usage';
 import {
   assistantParseRequestSchema,
   assistantParseResultSchema,
@@ -110,6 +111,7 @@ function parseSimpleTransactionText(text: string, nowIso: string): Awaited<Retur
       },
     },
     missingFields,
+    tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   };
 }
 
@@ -126,6 +128,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'AI assistant access not enabled' }, { status: 403 });
   }
 
+  // Check token limit
+  const { allowed, reason, usage } = await assertWithinTokenLimit(userId);
+  if (!allowed) {
+    return NextResponse.json({ error: reason, usage }, { status: 429 });
+  }
+
   const body = await request.json().catch(() => null);
   const input = assistantParseRequestSchema.safeParse(body);
   if (!input.success) {
@@ -135,7 +143,11 @@ export async function POST(request: Request) {
   const timezone = input.data.timezone ?? 'UTC';
   const nowIso = input.data.nowIso ?? new Date().toISOString();
 
+  const requestId = crypto.randomUUID();
+  const model = process.env.OPENAI_MODEL || 'gpt-5-nano';
+
   let parsed: Awaited<ReturnType<typeof parseWithOpenAI>>;
+  let usageStatus: 'success' | 'error' | 'fallback' = 'success';
   try {
     parsed = await parseWithOpenAI({
       text: input.data.text,
@@ -147,11 +159,38 @@ export async function POST(request: Request) {
     const heuristic = parseSimpleTransactionText(input.data.text, nowIso);
     if (heuristic) {
       parsed = heuristic;
+      usageStatus = 'fallback';
     } else {
+      usageStatus = 'error';
+      // Record failed attempt
+      recordAiUsage({
+        userId,
+        model,
+        provider: 'openai',
+        feature: 'assistant_parse',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        requestId,
+        status: 'error',
+      }).catch(() => {});
       const reason = error instanceof Error ? error.message : 'Unable to parse request';
       return NextResponse.json(fallbackParseResult(input.data.text, reason));
     }
   }
+
+  // Record usage after successful parse
+  recordAiUsage({
+    userId,
+    model,
+    provider: 'openai',
+    feature: 'assistant_parse',
+    inputTokens: parsed.tokenUsage?.inputTokens ?? 0,
+    outputTokens: parsed.tokenUsage?.outputTokens ?? 0,
+    totalTokens: parsed.tokenUsage?.totalTokens ?? 0,
+    requestId,
+    status: usageStatus,
+  }).catch(() => {});
 
   const userDoc = adminDb!.collection('users').doc(userId);
   const [accountsSnap, categoriesSnap, budgetsSnap, transactionsSnap] = await Promise.all([
