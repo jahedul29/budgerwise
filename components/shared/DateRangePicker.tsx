@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CalendarDays,
@@ -98,9 +98,22 @@ export function DateRangePicker({ value, onChange, inline }: DateRangePickerProp
   const [viewMonth, setViewMonth] = useState(() =>
     startOfMonth(value?.start ?? new Date()),
   );
-  // During selection: first click sets selectionStart, second sets the range
   const [selectionStart, setSelectionStart] = useState<Date | null>(null);
   const [hoveredDay, setHoveredDay] = useState<Date | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSelectionStart(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
 
   const activePreset = useMemo(() => {
     if (!value) return null;
@@ -139,7 +152,6 @@ export function DateRangePicker({ value, onChange, inline }: DateRangePickerProp
     setSelectionStart(null);
   }, [onChange]);
 
-  // Compute visual range (including hover preview during selection)
   const visualRange = useMemo(() => {
     if (selectionStart && hoveredDay) {
       const s = isBefore(hoveredDay, selectionStart) ? hoveredDay : selectionStart;
@@ -149,7 +161,6 @@ export function DateRangePicker({ value, onChange, inline }: DateRangePickerProp
     return value ?? null;
   }, [selectionStart, hoveredDay, value]);
 
-  // Build calendar grid
   const calendarDays = useMemo(() => {
     const ms = startOfMonth(viewMonth);
     const me = endOfMonth(viewMonth);
@@ -164,22 +175,43 @@ export function DateRangePicker({ value, onChange, inline }: DateRangePickerProp
     return days;
   }, [viewMonth]);
 
-  // Display label
   const displayLabel = useMemo(() => {
     if (!value) return 'All time';
     if (activePreset) return activePreset;
-    return `${format(value.start, 'MMM d')} — ${format(value.end, 'MMM d, yyyy')}`;
+    return `${format(value.start, 'MMM d')} – ${format(value.end, 'MMM d, yyyy')}`;
   }, [value, activePreset]);
 
-  const trigger = (
+  /* ── Trigger ── */
+  const trigger = inline ? (
     <button
       type="button"
       onClick={() => setOpen(!open)}
-      className={`group flex items-center gap-2.5 rounded-xl text-left transition-all ${
-        inline
-          ? 'w-full px-3 py-2.5 bg-surface-light dark:bg-white/[0.04] hover:bg-navy-50 dark:hover:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.06]'
-          : 'px-3.5 py-2.5 border border-gray-200/70 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] shadow-sm hover:border-primary-400/50 hover:shadow-md'
-      } ${value ? 'border-primary-400/40 dark:border-primary-500/20' : ''}`}
+      className={`inline-flex items-center gap-1.5 h-8 rounded-xl px-3 text-[12px] font-semibold transition-all border ${
+        value
+          ? 'bg-primary-500/[0.08] dark:bg-primary-500/[0.10] text-primary-700 dark:text-primary-300 border-primary-500/20'
+          : 'bg-white/80 dark:bg-white/[0.03] text-navy-500 dark:text-navy-400 border-gray-200/50 dark:border-white/[0.06] hover:border-gray-300 dark:hover:border-white/[0.10]'
+      }`}
+    >
+      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate max-w-[140px]">{displayLabel}</span>
+      {value && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); clear(); }}
+          className="p-0.5 -mr-1 rounded hover:bg-primary-500/15 transition-colors"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+      {!value && (
+        <ChevronDown className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      )}
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      className={`group flex items-center gap-2.5 rounded-xl text-left transition-all px-3.5 py-2.5 border border-gray-200/70 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] shadow-sm hover:border-primary-400/50 hover:shadow-md ${value ? 'border-primary-400/40 dark:border-primary-500/20' : ''}`}
     >
       <div className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
         value ? 'bg-primary-500/15 text-primary-500' : 'bg-surface-light dark:bg-white/[0.06] text-navy-300 dark:text-navy-500'
@@ -218,178 +250,183 @@ export function DateRangePicker({ value, onChange, inline }: DateRangePickerProp
     </button>
   );
 
+  /* ── Calendar Dropdown ── */
+  const calendarContent = (
+    <div className="rounded-2xl border border-gray-200/70 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-white/[0.06] dark:bg-surface-elevated/95">
+      {/* Presets */}
+      <div className="mb-4">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-navy-300 dark:text-navy-500">
+          Quick select
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => applyPreset(preset)}
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                activePreset === preset.label
+                  ? 'gradient-primary text-white shadow-glow-sm'
+                  : 'bg-surface-light dark:bg-white/[0.04] text-navy-500 dark:text-navy-300 hover:bg-navy-50 dark:hover:bg-white/[0.08]'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex-1 border-t border-gray-200/60 dark:border-white/[0.06]" />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-navy-300 dark:text-navy-500">
+          or pick dates
+        </span>
+        <div className="flex-1 border-t border-gray-200/60 dark:border-white/[0.06]" />
+      </div>
+
+      {/* Selection hint */}
+      {selectionStart && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 px-3 py-2 text-xs font-medium text-primary-700 dark:text-primary-300">
+          <Sparkles className="h-3.5 w-3.5" />
+          Pick the end date — started from {format(selectionStart, 'MMM d')}
+        </div>
+      )}
+
+      {/* Calendar header */}
+      <div className="mb-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setViewMonth(subMonths(viewMonth, 1))}
+          className="rounded-lg p-1.5 text-navy-400 transition-colors hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-white/[0.06] dark:hover:text-navy-200"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <h4 className="text-sm font-display font-bold text-navy-800 dark:text-navy-50">
+          {format(viewMonth, 'MMMM yyyy')}
+        </h4>
+        <button
+          type="button"
+          onClick={() => setViewMonth(addMonths(viewMonth, 1))}
+          className="rounded-lg p-1.5 text-navy-400 transition-colors hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-white/[0.06] dark:hover:text-navy-200"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Weekday labels */}
+      <div className="mb-1 grid grid-cols-7 gap-0">
+        {WEEKDAYS.map((d) => (
+          <div
+            key={d}
+            className="py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-navy-300 dark:text-navy-500"
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7 gap-0">
+        {calendarDays.map((day, i) => {
+          const inMonth = isSameMonth(day, viewMonth);
+          const today = isTodayFn(day);
+
+          const isRangeStart = visualRange && isSameDay(day, visualRange.start);
+          const isRangeEnd = visualRange && isSameDay(day, visualRange.end);
+          const inRange =
+            visualRange &&
+            !isSameDay(visualRange.start, visualRange.end) &&
+            isWithinInterval(day, { start: visualRange.start, end: visualRange.end });
+          const isEndpoint = isRangeStart || isRangeEnd;
+          const isPickingStart = selectionStart && isSameDay(day, selectionStart);
+
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => handleDayClick(day)}
+              onMouseEnter={() => setHoveredDay(day)}
+              onMouseLeave={() => setHoveredDay(null)}
+              className={`relative flex h-9 w-full items-center justify-center text-xs font-medium transition-all ${
+                isEndpoint
+                  ? 'z-10 text-white font-bold'
+                  : inRange
+                    ? 'text-primary-700 dark:text-primary-300 font-semibold'
+                    : today && inMonth
+                      ? 'text-primary-600 dark:text-primary-400 font-bold'
+                      : inMonth
+                        ? 'text-navy-700 hover:text-navy-900 dark:text-navy-200 dark:hover:text-white'
+                        : 'text-navy-200 dark:text-navy-600'
+              }`}
+            >
+              {/* Range background band */}
+              {inRange && !isEndpoint && (
+                <span className="absolute inset-0 bg-primary-100/70 dark:bg-primary-500/10" />
+              )}
+              {/* Start cap */}
+              {isRangeStart && inRange && !isSameDay(visualRange!.start, visualRange!.end) && (
+                <span className="absolute inset-y-0 right-0 left-1/2 bg-primary-100/70 dark:bg-primary-500/10" />
+              )}
+              {/* End cap */}
+              {isRangeEnd && inRange && !isSameDay(visualRange!.start, visualRange!.end) && (
+                <span className="absolute inset-y-0 left-0 right-1/2 bg-primary-100/70 dark:bg-primary-500/10" />
+              )}
+              {/* Endpoint circle */}
+              {isEndpoint && (
+                <span className="absolute inset-0.5 rounded-lg gradient-primary shadow-glow-sm" />
+              )}
+              {/* Picking-start pulse */}
+              {isPickingStart && !isRangeEnd && (
+                <span className="absolute inset-0.5 rounded-lg ring-2 ring-primary-400 animate-pulse" />
+              )}
+              <span className="relative z-10">{format(day, 'd')}</span>
+              {today && !isEndpoint && (
+                <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary-500 z-10" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected range summary */}
+      {value && (
+        <div className="mt-4 flex items-center justify-between rounded-xl bg-surface-light/80 dark:bg-white/[0.03] px-3 py-2.5">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-display font-bold text-navy-800 dark:text-navy-50">
+              {format(value.start, 'MMM d, yyyy')}
+            </span>
+            <span className="text-navy-300 dark:text-navy-500">—</span>
+            <span className="font-display font-bold text-navy-800 dark:text-navy-50">
+              {format(value.end, 'MMM d, yyyy')}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={clear}
+            className="rounded-md px-2 py-1 text-[11px] font-semibold text-expense hover:bg-expense/10 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       {trigger}
 
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
+            initial={{ opacity: 0, y: 4, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.97 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute top-full z-50 mt-2 w-[min(340px,calc(100vw-2rem))] right-0 sm:right-auto sm:left-0"
           >
-            <div className="mt-2 rounded-2xl border border-gray-200/70 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-white/[0.06] dark:bg-surface-elevated/95">
-              {/* Presets */}
-              <div className="mb-4">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-navy-300 dark:text-navy-500">
-                  Quick select
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {PRESETS.map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all ${
-                        activePreset === preset.label
-                          ? 'gradient-primary text-white shadow-glow-sm'
-                          : 'bg-surface-light dark:bg-white/[0.04] text-navy-500 dark:text-navy-300 hover:bg-navy-50 dark:hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex-1 border-t border-gray-200/60 dark:border-white/[0.06]" />
-                <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-navy-300 dark:text-navy-500">
-                  or pick dates
-                </span>
-                <div className="flex-1 border-t border-gray-200/60 dark:border-white/[0.06]" />
-              </div>
-
-              {/* Selection hint */}
-              {selectionStart && (
-                <div className="mb-3 flex items-center gap-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 px-3 py-2 text-xs font-medium text-primary-700 dark:text-primary-300">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Pick the end date — started from {format(selectionStart, 'MMM d')}
-                </div>
-              )}
-
-              {/* Calendar header */}
-              <div className="mb-3 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setViewMonth(subMonths(viewMonth, 1))}
-                  className="rounded-lg p-1.5 text-navy-400 transition-colors hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-white/[0.06] dark:hover:text-navy-200"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <h4 className="text-sm font-display font-bold text-navy-800 dark:text-navy-50">
-                  {format(viewMonth, 'MMMM yyyy')}
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                  className="rounded-lg p-1.5 text-navy-400 transition-colors hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-white/[0.06] dark:hover:text-navy-200"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Weekday labels */}
-              <div className="mb-1 grid grid-cols-7 gap-0">
-                {WEEKDAYS.map((d) => (
-                  <div
-                    key={d}
-                    className="py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-navy-300 dark:text-navy-500"
-                  >
-                    {d}
-                  </div>
-                ))}
-              </div>
-
-              {/* Day grid */}
-              <div className="grid grid-cols-7 gap-0">
-                {calendarDays.map((day, i) => {
-                  const inMonth = isSameMonth(day, viewMonth);
-                  const today = isTodayFn(day);
-
-                  const isRangeStart = visualRange && isSameDay(day, visualRange.start);
-                  const isRangeEnd = visualRange && isSameDay(day, visualRange.end);
-                  const inRange =
-                    visualRange &&
-                    !isSameDay(visualRange.start, visualRange.end) &&
-                    isWithinInterval(day, { start: visualRange.start, end: visualRange.end });
-                  const isEndpoint = isRangeStart || isRangeEnd;
-                  const isPickingStart = selectionStart && isSameDay(day, selectionStart);
-
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => handleDayClick(day)}
-                      onMouseEnter={() => setHoveredDay(day)}
-                      onMouseLeave={() => setHoveredDay(null)}
-                      className={`relative flex h-9 w-full items-center justify-center text-xs font-medium transition-all ${
-                        isEndpoint
-                          ? 'z-10 text-white font-bold'
-                          : inRange
-                            ? 'text-primary-700 dark:text-primary-300 font-semibold'
-                            : today && inMonth
-                              ? 'text-primary-600 dark:text-primary-400 font-bold'
-                              : inMonth
-                                ? 'text-navy-700 hover:text-navy-900 dark:text-navy-200 dark:hover:text-white'
-                                : 'text-navy-200 dark:text-navy-600'
-                      }`}
-                    >
-                      {/* Range background band */}
-                      {inRange && !isEndpoint && (
-                        <span className="absolute inset-0 bg-primary-100/70 dark:bg-primary-500/10" />
-                      )}
-                      {/* Start cap */}
-                      {isRangeStart && inRange && !isSameDay(visualRange!.start, visualRange!.end) && (
-                        <span className="absolute inset-y-0 right-0 left-1/2 bg-primary-100/70 dark:bg-primary-500/10" />
-                      )}
-                      {/* End cap */}
-                      {isRangeEnd && inRange && !isSameDay(visualRange!.start, visualRange!.end) && (
-                        <span className="absolute inset-y-0 left-0 right-1/2 bg-primary-100/70 dark:bg-primary-500/10" />
-                      )}
-                      {/* Endpoint circle */}
-                      {isEndpoint && (
-                        <span className="absolute inset-0.5 rounded-lg gradient-primary shadow-glow-sm" />
-                      )}
-                      {/* Picking-start pulse */}
-                      {isPickingStart && !isRangeEnd && (
-                        <span className="absolute inset-0.5 rounded-lg ring-2 ring-primary-400 animate-pulse" />
-                      )}
-                      <span className="relative z-10">{format(day, 'd')}</span>
-                      {today && !isEndpoint && (
-                        <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary-500 z-10" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Selected range summary */}
-              {value && (
-                <div className="mt-4 flex items-center justify-between rounded-xl bg-surface-light/80 dark:bg-white/[0.03] px-3 py-2.5">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-display font-bold text-navy-800 dark:text-navy-50">
-                      {format(value.start, 'MMM d, yyyy')}
-                    </span>
-                    <span className="text-navy-300 dark:text-navy-500">—</span>
-                    <span className="font-display font-bold text-navy-800 dark:text-navy-50">
-                      {format(value.end, 'MMM d, yyyy')}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={clear}
-                    className="rounded-md px-2 py-1 text-[11px] font-semibold text-expense hover:bg-expense/10 transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-            </div>
+            {calendarContent}
           </motion.div>
         )}
       </AnimatePresence>
