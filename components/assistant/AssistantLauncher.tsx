@@ -3,6 +3,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   Loader2,
+  Lock,
   Mic,
   Sparkles,
   ChevronRight,
@@ -277,6 +278,15 @@ export function AssistantLauncher() {
   const [parseResult, setParseResult] = useState<AssistantParseResult | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [quota, setQuota] = useState<{
+    totalTokensUsed: number;
+    tokenLimit: number | null;
+    remaining: number | null;
+    usagePercent: number;
+    isUnlimited: boolean;
+    hardStopEnabled: boolean;
+  } | null>(null);
+  const [quotaBlocked, setQuotaBlocked] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -287,6 +297,20 @@ export function AssistantLauncher() {
       .then((data) => setAiEnabled(Boolean(data.enabled)))
       .catch(() => setAiEnabled(false));
   }, []);
+
+  // Fetch usage quota when panel opens
+  useEffect(() => {
+    if (!open || !aiEnabled) return;
+    fetch('/api/assistant/usage')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data.totalTokensUsed === 'number') {
+          setQuota(data);
+          setQuotaBlocked(data.hardStopEnabled && data.usagePercent >= 1 && !data.isUnlimited);
+        }
+      })
+      .catch(() => {});
+  }, [open, aiEnabled]);
 
   const { accounts } = useAccounts();
   const { categories } = useCategories();
@@ -399,6 +423,11 @@ export function AssistantLauncher() {
         }),
       });
       const data = await response.json().catch(() => null);
+      if (response.status === 429) {
+        setQuotaBlocked(true);
+        if (data?.usage) setQuota(data.usage);
+        throw new Error(data?.error ?? 'Monthly AI token limit reached');
+      }
       if (!response.ok || !data) {
         throw new Error(data?.error ?? 'Failed to parse command');
       }
@@ -490,8 +519,19 @@ export function AssistantLauncher() {
       toast.error(error instanceof Error ? error.message : 'Failed to parse command');
     } finally {
       setParsing(false);
+      // Refresh quota after each parse attempt
+      fetch('/api/assistant/usage')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && typeof data.totalTokensUsed === 'number') {
+            setQuota(data);
+            setQuotaBlocked(data.hardStopEnabled && data.usagePercent >= 1 && !data.isUnlimited);
+          }
+        })
+        .catch(() => {});
     }
-  }, [input, setAssistantTransactionDraft, setShowAddTransaction]);
+  }, [input, setAssistantTransactionDraft, setShowAddTransaction,
+      setAssistantCategoryDraft, setAssistantAccountDraft, setAssistantBudgetDraft, router]);
 
   const resolveAmbiguity = useCallback((key: string, id: string) => {
     if (!parseResult) return;
@@ -739,8 +779,265 @@ export function AssistantLauncher() {
     }
   };
 
-  // Don't render if AI access hasn't loaded or is disabled
-  if (aiEnabled !== true) return null;
+  // Don't render until access check completes
+  if (aiEnabled === null) return null;
+
+  // Disabled state — show FAB + locked panel with live demo preview
+  if (aiEnabled === false) {
+    const demoCommands = [
+      { text: 'Spent 450 on groceries from cash', icon: <CreditCard className="h-3 w-3" />, color: 'text-emerald-400', label: 'Transaction added' },
+      { text: 'Create a monthly budget of 5000 for food', icon: <PiggyBank className="h-3 w-3" />, color: 'text-sky-400', label: 'Budget created' },
+      { text: 'Add a bank account called Savings', icon: <Wallet className="h-3 w-3" />, color: 'text-amber-400', label: 'Account added' },
+      { text: 'I got paid 25000 salary today', icon: <CreditCard className="h-3 w-3" />, color: 'text-violet-400', label: 'Income recorded' },
+    ];
+
+    return (
+      <>
+        {/* ─── Locked FAB — uses the SAME vibrant style as enabled, but with a lock badge ─── */}
+        <div className="fixed z-40 bottom-20 right-4 lg:bottom-8 lg:right-8 h-14 w-14">
+          <motion.div
+            className="absolute -inset-2 rounded-3xl"
+            style={{ background: 'radial-gradient(circle, rgba(6,214,160,0.20) 0%, rgba(17,138,178,0.12) 50%, transparent 70%)' }}
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.25, 0.5] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute -inset-[2px] rounded-2xl opacity-60"
+            style={{
+              background: 'conic-gradient(from 0deg, #06D6A0, #118AB2, #00F5D4, #FFD166, #06D6A0)',
+              filter: 'blur(0.5px)',
+            }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+          />
+          <motion.button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="relative h-14 w-14 flex items-center justify-center rounded-2xl overflow-hidden group"
+            style={{ background: 'linear-gradient(145deg, #0a2a3c 0%, #0d1f2d 50%, #0a1628 100%)' }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.88 }}
+            aria-label="AI Assistant"
+          >
+            <motion.div
+              className="absolute inset-0"
+              style={{
+                background: 'linear-gradient(135deg, rgba(6,214,160,0.2) 0%, rgba(17,138,178,0.15) 40%, rgba(0,245,212,0.2) 70%, rgba(6,214,160,0.1) 100%)',
+                backgroundSize: '200% 200%',
+              }}
+              animate={{ backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'] }}
+              transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-white/[0.08] via-transparent to-transparent" />
+            <motion.div
+              className="relative z-10"
+              animate={{ rotate: [0, 8, -8, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <Sparkles className="h-6 w-6 text-primary-300 drop-shadow-[0_0_8px_rgba(6,214,160,0.5)]" strokeWidth={2} />
+            </motion.div>
+            {/* Lock badge */}
+            <div className="absolute -bottom-0.5 -right-0.5 z-20 h-5 w-5 rounded-full bg-navy-800 dark:bg-navy-900 border-2 border-[#0d1f2d] flex items-center justify-center">
+              <Lock className="h-2.5 w-2.5 text-amber-400" />
+            </div>
+          </motion.button>
+        </div>
+
+        {/* ─── Locked Panel ─── */}
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={panelRef}
+              className="fixed z-[75] bottom-0 inset-x-0 lg:bottom-6 lg:right-6 lg:left-auto lg:w-[440px]"
+              initial={{ y: '100%', opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 340, mass: 0.8 }}
+            >
+              <div className="relative bg-white/95 dark:bg-[#080e1e]/95 backdrop-blur-2xl border border-gray-200/60 dark:border-white/[0.06] rounded-t-3xl lg:rounded-3xl shadow-2xl shadow-black/30 dark:shadow-black/60 overflow-hidden">
+                {/* Animated gradient border at top */}
+                <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden rounded-full">
+                  <motion.div
+                    className="h-full w-full"
+                    style={{ background: 'linear-gradient(90deg, #06D6A0, #118AB2, #FFD166, #06D6A0, #118AB2)' }}
+                    animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                  />
+                </div>
+
+                {/* Header */}
+                <div className="relative px-5 pt-4 pb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500/20 to-accent/20">
+                      <Sparkles className="h-4 w-4 text-primary-500" />
+                    </div>
+                    <div>
+                      <h2 className="font-display text-sm font-bold text-navy-900 dark:text-navy-50 tracking-tight">
+                        AI Assistant
+                      </h2>
+                      <p className="text-[10px] text-navy-400 dark:text-navy-500 -mt-0.5">Natural language commands</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-navy-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Live demo preview — blurred commands flowing */}
+                <div className="relative mx-4 mb-4 rounded-2xl overflow-hidden">
+                  {/* Background glow */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary-500/[0.04] via-transparent to-accent/[0.04] dark:from-primary-500/[0.06] dark:to-accent/[0.06]" />
+                  <div className="relative px-3 py-3 space-y-2">
+                    {demoCommands.map((cmd, i) => (
+                      <motion.div
+                        key={cmd.text}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 + i * 0.15, type: 'spring', damping: 20 }}
+                        className="relative"
+                      >
+                        {/* Command bubble */}
+                        <div className="rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/40 dark:border-white/[0.04] px-3 py-2 flex items-center gap-2.5">
+                          <div className={`shrink-0 h-6 w-6 rounded-lg bg-gradient-to-br from-gray-100 to-gray-50 dark:from-white/[0.06] dark:to-white/[0.02] flex items-center justify-center ${cmd.color}`}>
+                            {cmd.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] text-navy-700 dark:text-navy-200 truncate font-medium">&ldquo;{cmd.text}&rdquo;</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <CheckCircle2 className={`h-2.5 w-2.5 ${cmd.color}`} />
+                              <span className={`text-[10px] font-medium ${cmd.color}`}>{cmd.label}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Frost overlay — light enough to see commands behind */}
+                  <motion.div
+                    className="absolute inset-0 backdrop-blur-[4px] bg-gradient-to-b from-white/20 via-white/30 to-white/60 dark:from-[#080e1e]/10 dark:via-[#080e1e]/25 dark:to-[#080e1e]/60 flex flex-col items-center justify-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                  >
+                    {/* Animated lock icon */}
+                    <motion.div
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ delay: 1, type: 'spring', damping: 12 }}
+                      className="relative"
+                    >
+                      {/* Pulsing ring */}
+                      <motion.div
+                        className="absolute -inset-3 rounded-3xl"
+                        style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.25) 0%, transparent 70%)' }}
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                      {/* Spinning border ring */}
+                      <motion.div
+                        className="absolute -inset-[2px] rounded-2xl opacity-70"
+                        style={{ background: 'conic-gradient(from 0deg, #f59e0b, #f97316, #eab308, #f59e0b)' }}
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+                      />
+                      <div className="relative h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                        <motion.div
+                          animate={{ y: [0, -2, 0], rotateZ: [0, -8, 8, 0] }}
+                          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                        >
+                          <Lock className="h-5 w-5 text-white drop-shadow-sm" />
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                    <motion.p
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.2 }}
+                      className="mt-3 text-[13px] font-bold text-navy-700 dark:text-navy-100 drop-shadow-[0_1px_2px_rgba(255,255,255,0.3)] dark:drop-shadow-none"
+                    >
+                      Unlock AI Commands
+                    </motion.p>
+                  </motion.div>
+                </div>
+
+                {/* CTA section */}
+                <motion.div
+                  className="px-5 pb-5 space-y-3"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <p className="text-[13px] text-center text-navy-600 dark:text-navy-300 leading-relaxed">
+                    Manage your finances with simple voice or text commands.
+                  </p>
+
+                  {/* Request access button */}
+                  {(() => {
+                    const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || '';
+                    const subject = encodeURIComponent('Want AI Feature in BudgetWise');
+                    const body = encodeURIComponent(
+                      `Hi,\n\nI'd like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!`,
+                    );
+                    return adminEmail ? (
+                      <a
+                        href={`mailto:${adminEmail}?subject=${subject}&body=${body}`}
+                        className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
+                        style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                        Request Access from Admin
+                      </a>
+                    ) : (
+                      <p className="text-[12px] text-center text-navy-500 dark:text-navy-400">
+                        Contact your <span className="font-semibold text-navy-700 dark:text-navy-200">administrator</span> to enable access.
+                      </p>
+                    );
+                  })()}
+
+                  {/* Feature grid */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { icon: <Mic className="h-3.5 w-3.5" />, label: 'Voice input', desc: 'Speak naturally' },
+                      { icon: <Zap className="h-3.5 w-3.5" />, label: 'Instant actions', desc: 'No forms needed' },
+                      { icon: <Sparkles className="h-3.5 w-3.5" />, label: 'Smart parsing', desc: 'Understands context' },
+                      { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: 'Safe confirms', desc: 'Review before saving' },
+                    ].map((f) => (
+                      <div
+                        key={f.label}
+                        className="rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-200/30 dark:border-white/[0.03] px-2.5 py-2 flex items-start gap-2"
+                      >
+                        <div className="shrink-0 mt-0.5 text-primary-500 dark:text-primary-400">{f.icon}</div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-navy-700 dark:text-navy-200">{f.label}</p>
+                          <p className="text-[10px] text-navy-400 dark:text-navy-500">{f.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
+    );
+  }
 
   return (
     <>
@@ -866,8 +1163,59 @@ export function AssistantLauncher() {
                 </button>
               </div>
 
+              {/* ─── Token Quota Bar ─── */}
+              {quota && !quota.isUnlimited && quota.tokenLimit != null && quota.tokenLimit > 0 && (
+                <div className="px-5 pb-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-semibold ${
+                      quota.usagePercent >= 1 ? 'text-expense' :
+                      quota.usagePercent >= 0.9 ? 'text-orange-500' :
+                      quota.usagePercent >= 0.75 ? 'text-warning' :
+                      'text-navy-400 dark:text-navy-500'
+                    }`}>
+                      {quota.usagePercent >= 1 ? 'Limit exceeded' : `${Math.round(quota.usagePercent * 100)}% of monthly limit`}
+                    </span>
+                    <span className="text-[10px] text-navy-400 dark:text-navy-500 tabular-nums">
+                      {quota.totalTokensUsed >= 1_000_000 ? `${(quota.totalTokensUsed / 1_000_000).toFixed(1)}M` : quota.totalTokensUsed >= 1000 ? `${(quota.totalTokensUsed / 1000).toFixed(1)}K` : quota.totalTokensUsed}
+                      {' / '}
+                      {quota.tokenLimit >= 1_000_000 ? `${(quota.tokenLimit / 1_000_000).toFixed(1)}M` : quota.tokenLimit >= 1000 ? `${(quota.tokenLimit / 1000).toFixed(1)}K` : quota.tokenLimit.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-navy-100 dark:bg-white/[0.06] overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        quota.usagePercent >= 1 ? 'bg-expense' :
+                        quota.usagePercent >= 0.9 ? 'bg-orange-500' :
+                        quota.usagePercent >= 0.75 ? 'bg-warning' :
+                        'bg-primary-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.round(quota.usagePercent * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Quota Blocked State ─── */}
+              {quotaBlocked && (
+                <div className="mx-5 mb-5 rounded-2xl border border-expense/20 bg-expense/[0.05] p-4 space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-expense/15">
+                      <AlertTriangle className="h-4 w-4 text-expense" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-navy-800 dark:text-navy-100">
+                        Monthly limit reached
+                      </p>
+                      <p className="text-xs text-navy-500 dark:text-navy-300 mt-1">
+                        Your AI token quota has been used up this month. It resets on the 1st of next month. Contact your administrator for more.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ─── Content (scrollable) ─── */}
-              <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pb-5 space-y-3">
+              {!quotaBlocked && <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pb-5 space-y-3">
 
                 {/* ─── Parse Result ─── */}
                 <AnimatePresence mode="wait">
@@ -1437,10 +1785,10 @@ export function AssistantLauncher() {
                     </div>
                   </motion.div>
                 )}
-              </div>
+              </div>}
 
               {/* ─── Input Bar (pinned to bottom) ─── */}
-              <div className="shrink-0 border-t border-gray-200/50 dark:border-white/[0.04] bg-white/60 dark:bg-white/[0.02] px-4 py-3 safe-area-bottom">
+              {!quotaBlocked && <div className="shrink-0 border-t border-gray-200/50 dark:border-white/[0.04] bg-white/60 dark:bg-white/[0.02] px-4 py-3 safe-area-bottom">
                 <div className="relative flex items-center gap-2">
                   {/* Glowing border wrapper */}
                   <div className="relative flex-1 group">
@@ -1483,7 +1831,7 @@ export function AssistantLauncher() {
                     )}
                   </motion.button>
                 </div>
-              </div>
+              </div>}
             </div>
           </motion.div>
         )}

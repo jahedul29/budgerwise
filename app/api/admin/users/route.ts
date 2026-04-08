@@ -9,6 +9,7 @@ import {
   parseAdminUserListParams,
   userMatchesFilters,
 } from '@/lib/admin-user-filters';
+import { getGlobalAiSettings } from '@/lib/ai-usage';
 
 export async function GET(request: Request) {
   const session = await requireAdmin();
@@ -35,6 +36,13 @@ export async function GET(request: Request) {
       }
     }
 
+    const globalSettings = await getGlobalAiSettings();
+
+    const currentMonth = (() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    })();
+
     const maxScan = 1200;
     const batchSize = 200;
     let scanned = 0;
@@ -44,6 +52,10 @@ export async function GET(request: Request) {
       email?: string;
       avatar?: string;
       aiAssistantEnabled: boolean;
+      aiUseCustomTokenLimit?: boolean;
+      aiMonthlyTokenLimit?: number;
+      aiUnlimited?: boolean;
+      aiHardStop?: boolean;
       createdAt?: string;
       lastLoginAt?: string;
       sortValue: string;
@@ -60,13 +72,18 @@ export async function GET(request: Request) {
 
       for (const doc of snapshot.docs) {
         scanned += 1;
+        const rawData = doc.data() as Record<string, unknown>;
         const normalized = normalizeAdminUserRecord({
           id: doc.id,
-          ...(doc.data() as Record<string, unknown>),
+          ...rawData,
         });
         if (userMatchesFilters(normalized, filters)) {
           matched.push({
             ...normalized,
+            aiUseCustomTokenLimit: Boolean(rawData.aiUseCustomTokenLimit),
+            aiMonthlyTokenLimit: typeof rawData.aiMonthlyTokenLimit === 'number' ? rawData.aiMonthlyTokenLimit : undefined,
+            aiUnlimited: Boolean(rawData.aiUnlimited),
+            aiHardStop: typeof rawData.aiHardStop === 'boolean' ? rawData.aiHardStop : undefined,
             sortValue: getSortValue(normalized, sortField),
           });
           if (matched.length >= limit + 1) break;
@@ -88,15 +105,53 @@ export async function GET(request: Request) {
       hasMore = true;
     }
 
-    const users = matched.slice(0, limit).map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      avatar: user.avatar,
-      aiAssistantEnabled: user.aiAssistantEnabled,
-      createdAt: user.createdAt,
-      lastLoginAt: user.lastLoginAt,
-    }));
+    const pageUsers = matched.slice(0, limit);
+
+    // Fetch monthly usage aggregates for page users
+    const usagePromises = pageUsers.map(async (user) => {
+      const monthDoc = await adminDb!
+        .collection('users')
+        .doc(user.id)
+        .collection('aiUsageMonthly')
+        .doc(currentMonth)
+        .get();
+      return { id: user.id, data: monthDoc.exists ? monthDoc.data() : null };
+    });
+    const usageResults = await Promise.all(usagePromises);
+    const usageMap = new Map(usageResults.map((r) => [r.id, r.data]));
+
+    const users = pageUsers.map((user) => {
+      const monthData = usageMap.get(user.id);
+      const totalUsed = (monthData?.totalTokensUsed as number) ?? 0;
+      const isUnlimited = user.aiUnlimited === true;
+      const effectiveLimit = isUnlimited
+        ? Infinity
+        : user.aiUseCustomTokenLimit && typeof user.aiMonthlyTokenLimit === 'number'
+          ? user.aiMonthlyTokenLimit
+          : globalSettings.defaultMonthlyTokenLimit;
+      const remaining = isUnlimited ? Infinity : Math.max(0, effectiveLimit - totalUsed);
+      const usagePercent = isUnlimited ? 0 : effectiveLimit > 0 ? totalUsed / effectiveLimit : 1;
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        aiAssistantEnabled: user.aiAssistantEnabled,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+        aiTokenUsage: {
+          totalTokensUsed: totalUsed,
+          tokenLimit: isUnlimited ? null : effectiveLimit,
+          remaining: isUnlimited ? null : remaining,
+          usagePercent,
+          requestCount: (monthData?.requestCount as number) ?? 0,
+          lastAiActivity: (monthData?.lastUsedAt as string) ?? null,
+          isUnlimited,
+          isCustomLimit: Boolean(user.aiUseCustomTokenLimit),
+        },
+      };
+    });
 
     const lastVisible = users[users.length - 1];
     const nextCursor = hasMore && lastVisible
