@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import { isFirebaseAdminConfigured } from '@/lib/firebase-admin';
-import { getGlobalAiSettings, updateGlobalAiSettings } from '@/lib/ai-usage';
+import { getGlobalAiSettings, updateGlobalAiSettings, getCurrentMonth } from '@/lib/ai-usage';
 
 export async function GET() {
   const session = await requireAdmin();
@@ -39,10 +39,7 @@ export async function POST(request: Request) {
   }
   if (typeof body.openaiReportedTokens === 'number' && body.openaiReportedTokens >= 0) {
     update.openaiReportedTokens = body.openaiReportedTokens;
-    // Auto-set the month to current month when updating
-    const now = new Date();
-    update.openaiReportedMonth = body.openaiReportedMonth
-      || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    update.openaiReportedMonth = body.openaiReportedMonth || getCurrentMonth();
   }
   if (body.openaiReportedTokens === null) {
     update.openaiReportedTokens = null;

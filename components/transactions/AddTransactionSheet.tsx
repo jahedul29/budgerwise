@@ -188,7 +188,7 @@ export function AddTransactionSheet() {
               <div className="h-1.5 w-12 rounded-full bg-navy-200 dark:bg-navy-600" />
             </div>
 
-            <div className="px-5 pb-28 lg:px-6 lg:pb-8">
+            <div className="px-5 pb-8 safe-area-bottom safe-area-bottom-xl lg:px-6">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-lg font-display font-bold text-navy-900 dark:text-navy-50">Add Transaction</h2>
                 <div className="flex items-center gap-2">

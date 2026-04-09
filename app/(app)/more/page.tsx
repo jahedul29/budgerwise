@@ -8,8 +8,7 @@ import {
 import { PageWrapper } from '@/components/layout/PageWrapper';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { clearCachedUserProfile, useStableUser } from '@/hooks/useStableUser';
-
-const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase();
+import { useUserRole } from '@/hooks/useUserRole';
 
 const menuItems = [
   { label: 'Accounts', icon: Wallet, href: '/more/accounts', color: 'text-accent' },
@@ -29,7 +28,7 @@ const fadeUp = {
 
 export default function MorePage() {
   const { user } = useStableUser();
-  const isAdmin = Boolean(ADMIN_EMAIL && user?.email?.trim().toLowerCase() === ADMIN_EMAIL);
+  const { isAdmin } = useUserRole();
 
   return (
     <PageWrapper>
@@ -83,7 +82,7 @@ export default function MorePage() {
           <motion.div variants={fadeUp}>
             <div className="glass-card rounded-2xl overflow-hidden">
               <Link
-                href="/admin/users"
+                href="/admin/dashboard"
                 className="flex items-center gap-3.5 px-5 py-4 transition-colors hover:bg-navy-50/50 dark:hover:bg-white/[0.03] group"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10">

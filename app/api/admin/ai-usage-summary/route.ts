@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import { adminDb, isFirebaseAdminConfigured } from '@/lib/firebase-admin';
-import { getGlobalAiSettings } from '@/lib/ai-usage';
+import { getGlobalAiSettings, getCurrentMonth } from '@/lib/ai-usage';
 
 export async function GET() {
   const session = await requireAdmin();
@@ -12,8 +12,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Firebase not configured' }, { status: 500 });
   }
 
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonth = getCurrentMonth();
 
   const [globalSettings, usersSnap] = await Promise.all([
     getGlobalAiSettings(),

@@ -287,7 +287,7 @@ export function AssistantLauncher() {
     hardStopEnabled: boolean;
   } | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Check if AI assistant is enabled for this user
@@ -662,13 +662,6 @@ export function AssistantLauncher() {
     }
   }, [parseResult, requiresResolution, openTransactionDraftInForm, syncNow]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && !parsing) {
-      e.preventDefault();
-      handleParse();
-    }
-  };
-
   const isDelete = parseResult?.operation === 'delete';
   const confidenceColor = (parseResult?.confidence ?? 0) >= 0.8
     ? 'text-income dark:text-income'
@@ -794,7 +787,7 @@ export function AssistantLauncher() {
     return (
       <>
         {/* ─── Locked FAB — uses the SAME vibrant style as enabled, but with a lock badge ─── */}
-        <div className="fixed z-40 bottom-20 right-4 lg:bottom-8 lg:right-8 h-14 w-14">
+        <div className="fixed z-40 bottom-[5.75rem] right-4 lg:bottom-8 lg:right-8 h-14 w-14">
           <motion.div
             className="absolute -inset-2 rounded-3xl"
             style={{ background: 'radial-gradient(circle, rgba(6,214,160,0.20) 0%, rgba(17,138,178,0.12) 50%, transparent 70%)' }}
@@ -978,7 +971,7 @@ export function AssistantLauncher() {
 
                 {/* CTA section */}
                 <motion.div
-                  className="px-5 pb-5 space-y-3"
+                  className="px-5 pb-5 space-y-3 safe-area-bottom"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
@@ -987,28 +980,15 @@ export function AssistantLauncher() {
                     Manage your finances with simple voice or text commands.
                   </p>
 
-                  {/* Request access button */}
-                  {(() => {
-                    const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || '';
-                    const subject = encodeURIComponent('Want AI Feature in BudgetWise');
-                    const body = encodeURIComponent(
-                      `Hi,\n\nI'd like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!`,
-                    );
-                    return adminEmail ? (
-                      <a
-                        href={`mailto:${adminEmail}?subject=${subject}&body=${body}`}
-                        className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
-                        style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                        Request Access from Admin
-                      </a>
-                    ) : (
-                      <p className="text-[12px] text-center text-navy-500 dark:text-navy-400">
-                        Contact your <span className="font-semibold text-navy-700 dark:text-navy-200">administrator</span> to enable access.
-                      </p>
-                    );
-                  })()}
+                  {/* Request access — generic mailto (no hardcoded admin email) */}
+                  <a
+                    href={`mailto:?subject=${encodeURIComponent('Want AI Feature in BudgetWise')}&body=${encodeURIComponent('Hi,\n\nI\'d like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!')}`}
+                    className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
+                    style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                    Request Access from Admin
+                  </a>
 
                   {/* Feature grid */}
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1043,7 +1023,7 @@ export function AssistantLauncher() {
     <>
       {/* ─── AI Assistant FAB ─── */}
       {/* Same size as Add Transaction FAB (h-14 w-14), stacked above with 12px gap */}
-      <div className="fixed z-40 bottom-20 right-4 lg:bottom-8 lg:right-8 h-14 w-14">
+      <div className="fixed z-40 bottom-[5.75rem] right-4 lg:bottom-8 lg:right-8 h-14 w-14">
         {/* Outer glow pulse */}
         <motion.div
           className="absolute -inset-2 rounded-3xl"
@@ -1788,48 +1768,53 @@ export function AssistantLauncher() {
               </div>}
 
               {/* ─── Input Bar (pinned to bottom) ─── */}
-              {!quotaBlocked && <div className="shrink-0 border-t border-gray-200/50 dark:border-white/[0.04] bg-white/60 dark:bg-white/[0.02] px-4 py-3 safe-area-bottom">
-                <div className="relative flex items-center gap-2">
-                  {/* Glowing border wrapper */}
-                  <div className="relative flex-1 group">
-                    <div className="absolute -inset-[1px] rounded-xl bg-gradient-to-r from-primary-500/40 via-accent/40 to-primary-500/40 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 blur-[1px]" />
-                    <input
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      disabled={parsing}
-                      placeholder="Describe what you'd like to do..."
-                      className="relative w-full rounded-xl border border-gray-200/70 dark:border-white/[0.08] bg-white dark:bg-white/[0.04] px-4 py-2.5 pr-10 text-sm text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/40 focus:outline-none focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    {/* Voice button inside input */}
+              {!quotaBlocked && <div className="shrink-0 border-t border-gray-200/40 dark:border-white/[0.03] bg-white/80 dark:bg-[#0B1022]/80 backdrop-blur-md px-4 pt-3 pb-4 safe-area-bottom safe-area-bottom-lg lg:safe-area-bottom-md">
+                <div className="relative group">
+                  {/* Focus glow ring */}
+                  <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-primary-500/50 via-accent/50 to-primary-500/50 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 blur-[2px]" />
+
+                  {/* Input container — items-end so buttons stick to bottom */}
+                  <div className="relative flex items-end gap-1 rounded-2xl border border-gray-200/70 dark:border-white/[0.08] bg-white dark:bg-white/[0.04] shadow-sm transition-colors group-focus-within:border-transparent px-1.5 py-1.5">
+                    {/* Voice button — bottom-aligned */}
                     <button
                       type="button"
                       onClick={startVoice}
                       disabled={listening || parsing}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-lg text-navy-400 hover:text-primary-500 hover:bg-primary-500/10 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-navy-400 dark:text-navy-500 transition-all hover:text-primary-500 hover:bg-primary-500/10 disabled:opacity-30 disabled:pointer-events-none mb-0.5"
                       title={listening ? 'Listening...' : 'Voice input'}
                     >
-                      {listening ? <VoicePulse /> : <Mic className="h-3.5 w-3.5" />}
+                      {listening ? <VoicePulse /> : <Mic className="h-4 w-4" />}
                     </button>
-                  </div>
 
-                  {/* Send button */}
-                  <motion.button
-                    type="button"
-                    onClick={handleParse}
-                    disabled={parsing || !input.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl text-white transition-all disabled:opacity-30"
-                    style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.92 }}
-                  >
-                    {parsing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4" />
-                    )}
-                  </motion.button>
+                    {/* Textarea — 1 row default, max 2 rows */}
+                    <textarea
+                      ref={inputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      rows={1}
+                      disabled={parsing}
+                      placeholder="What would you like to do?"
+                      className="flex-1 min-w-0 bg-transparent px-1.5 py-1.5 text-[14px] leading-5 text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/35 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-y-auto scrollbar-hide"
+                      style={{ maxHeight: '50px' }}
+                    />
+
+                    {/* Send button — bottom-aligned, click only */}
+                    <motion.button
+                      type="button"
+                      onClick={handleParse}
+                      disabled={parsing || !input.trim()}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white transition-all disabled:opacity-20 mb-0.5"
+                      style={{ background: input.trim() && !parsing ? 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' : 'transparent' }}
+                      whileHover={input.trim() ? { scale: 1.1 } : {}}
+                      whileTap={input.trim() ? { scale: 0.9 } : {}}
+                    >
+                      {parsing ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary-500" />
+                      ) : (
+                        <ArrowRight className={`h-4 w-4 ${input.trim() ? 'text-white' : 'text-navy-300 dark:text-navy-600'}`} />
+                      )}
+                    </motion.button>
+                  </div>
                 </div>
               </div>}
             </div>

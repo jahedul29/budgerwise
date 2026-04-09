@@ -12,7 +12,7 @@ import type {
 const DEFAULT_MONTHLY_TOKEN_LIMIT = 500_000;
 const DEFAULT_HARD_STOP = true;
 
-function getCurrentMonth(): string {
+export function getCurrentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -213,9 +213,8 @@ export async function recordAiUsage(params: {
 }): Promise<void> {
   if (!adminDb) return;
 
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const timestamp = now.toISOString();
+  const month = getCurrentMonth();
+  const timestamp = new Date().toISOString();
 
   const ledgerEntry: Omit<AiUsageLedgerEntry, 'id'> = {
     userId: params.userId,
