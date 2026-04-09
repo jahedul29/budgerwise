@@ -8,6 +8,7 @@ import {
 } from '@/lib/admin-user-filters';
 
 interface BulkBody {
+  action?: 'set_ai' | 'block_trial';
   enabled?: boolean;
   filters?: AdminUserFilters;
 }
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as BulkBody | null;
-  if (typeof body?.enabled !== 'boolean') {
+  const action = body?.action === 'block_trial' ? 'block_trial' : 'set_ai';
+  if (action === 'set_ai' && typeof body?.enabled !== 'boolean') {
     return NextResponse.json({ error: 'enabled must be boolean' }, { status: 400 });
   }
 
@@ -31,6 +33,14 @@ export async function POST(request: Request) {
     aiStatus:
       body?.filters?.aiStatus === 'enabled' || body?.filters?.aiStatus === 'disabled'
         ? body.filters.aiStatus
+        : 'all',
+    accessStatus:
+      body?.filters?.accessStatus === 'full' || body?.filters?.accessStatus === 'trial' || body?.filters?.accessStatus === 'locked'
+        ? body.filters.accessStatus
+        : 'all',
+    trialStatus:
+      body?.filters?.trialStatus === 'active' || body?.filters?.trialStatus === 'available' || body?.filters?.trialStatus === 'blocked'
+        ? body.filters.trialStatus
         : 'all',
     createdFrom: body?.filters?.createdFrom || undefined,
     createdTo: body?.filters?.createdTo || undefined,
@@ -69,12 +79,26 @@ export async function POST(request: Request) {
       });
 
       if (!userMatchesFilters(normalized, filters)) continue;
-      if (normalized.aiAssistantEnabled === body.enabled) continue;
 
-      batch.update(doc.ref, {
-        aiAssistantEnabled: body.enabled,
-        updatedAt: nowIso,
-      });
+      if (action === 'set_ai') {
+        if (normalized.aiAssistantEnabled === body!.enabled) continue;
+
+        batch.update(doc.ref, {
+          aiAssistantEnabled: body!.enabled,
+          updatedAt: nowIso,
+        });
+      } else {
+        if (normalized.aiAssistantEnabled) continue;
+        const isTrialActive = normalized.aiEntitlementType === 'trial';
+        if (!normalized.aiTrialAvailable && !isTrialActive) continue;
+
+        batch.update(doc.ref, {
+          aiTrialAvailable: false,
+          aiEntitlementType: isTrialActive ? 'locked' : normalized.aiEntitlementType,
+          updatedAt: nowIso,
+        });
+      }
+
       writesInBatch += 1;
       updated += 1;
 
@@ -99,6 +123,7 @@ export async function POST(request: Request) {
     scanned,
     truncated,
     maxUpdates,
-    enabled: body.enabled,
+    enabled: body?.enabled,
+    action,
   });
 }

@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { adminDb, isFirebaseAdminConfigured } from '@/lib/firebase-admin';
+import { getUserAiAccessState } from '@/lib/ai-usage';
 import {
   assistantExecuteRequestSchema,
   assistantExecuteResultSchema,
@@ -26,9 +27,8 @@ export async function POST(request: Request) {
   if (!userId) return unauthorized();
   if (!isFirebaseAdminConfigured) return misconfigured();
 
-  // Check AI access
-  const accessDoc = await adminDb!.collection('users').doc(userId).get();
-  if (!accessDoc.exists || !accessDoc.data()?.aiAssistantEnabled) {
+  const accessState = await getUserAiAccessState(userId);
+  if (!accessState.enabled) {
     return NextResponse.json({ error: 'AI assistant access not enabled' }, { status: 403 });
   }
 

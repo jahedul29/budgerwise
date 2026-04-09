@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { adminDb, isFirebaseAdminConfigured } from '@/lib/firebase-admin';
 import { parseWithOpenAI, type OpenAITokenUsage } from '@/lib/assistant/openai-parser';
-import { assertWithinTokenLimit, recordAiUsage } from '@/lib/ai-usage';
+import { assertWithinTokenLimit, getUserAiAccessState, recordAiUsage } from '@/lib/ai-usage';
 import {
   assistantParseRequestSchema,
   assistantParseResultSchema,
@@ -122,13 +122,14 @@ export async function POST(request: Request) {
   if (!userId) return unauthorized();
   if (!isFirebaseAdminConfigured) return misconfigured();
 
-  // Check AI access
-  const accessDoc = await adminDb!.collection('users').doc(userId).get();
-  if (!accessDoc.exists || !accessDoc.data()?.aiAssistantEnabled) {
-    return NextResponse.json({ error: 'AI assistant access not enabled' }, { status: 403 });
+  const accessState = await getUserAiAccessState(userId);
+  if (!accessState.enabled) {
+    return NextResponse.json(
+      { error: accessState.blockedReason === 'trial_exhausted' ? 'Free trial ended' : 'AI assistant access not enabled', access: accessState },
+      { status: 403 },
+    );
   }
 
-  // Check token limit
   const { allowed, reason, usage } = await assertWithinTokenLimit(userId);
   if (!allowed) {
     return NextResponse.json({ error: reason, usage }, { status: 429 });
@@ -173,6 +174,8 @@ export async function POST(request: Request) {
         totalTokens: 0,
         requestId,
         status: 'error',
+        entitlementTypeAtRequest: accessState.entitlementType,
+        bucketType: accessState.entitlementType === 'trial' ? 'trial' : 'monthly',
       }).catch(() => {});
       const reason = error instanceof Error ? error.message : 'Unable to parse request';
       return NextResponse.json(fallbackParseResult(input.data.text, reason));
@@ -190,6 +193,8 @@ export async function POST(request: Request) {
     totalTokens: parsed.tokenUsage?.totalTokens ?? 0,
     requestId,
     status: usageStatus,
+    entitlementTypeAtRequest: accessState.entitlementType,
+    bucketType: accessState.entitlementType === 'trial' ? 'trial' : 'monthly',
   }).catch(() => {});
 
   const userDoc = adminDb!.collection('users').doc(userId);

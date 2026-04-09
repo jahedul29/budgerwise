@@ -49,6 +49,10 @@ export async function GET(request: Request) {
       email?: string;
       avatar?: string;
       aiAssistantEnabled: boolean;
+      aiEntitlementType: 'locked' | 'trial' | 'full';
+      aiTrialAvailable: boolean;
+      aiTrialStartedAt?: string;
+      aiTrialConsumedAt?: string;
       aiUseCustomTokenLimit?: boolean;
       aiMonthlyTokenLimit?: number;
       aiUnlimited?: boolean;
@@ -78,6 +82,10 @@ export async function GET(request: Request) {
         if (userMatchesFilters(normalized, filters)) {
           matched.push({
             ...normalized,
+            aiEntitlementType: (normalized.aiAssistantEnabled ? 'full' : normalized.aiEntitlementType) as 'locked' | 'trial' | 'full',
+            aiTrialAvailable: normalized.aiTrialAvailable,
+            aiTrialStartedAt: normalized.aiTrialStartedAt,
+            aiTrialConsumedAt: normalized.aiTrialConsumedAt,
             aiUseCustomTokenLimit: Boolean(rawData.aiUseCustomTokenLimit),
             aiMonthlyTokenLimit: typeof rawData.aiMonthlyTokenLimit === 'number' ? rawData.aiMonthlyTokenLimit : undefined,
             aiUnlimited: Boolean(rawData.aiUnlimited),
@@ -137,6 +145,10 @@ export async function GET(request: Request) {
         email: user.email,
         avatar: user.avatar,
         aiAssistantEnabled: user.aiAssistantEnabled,
+        aiEntitlementType: user.aiEntitlementType,
+        aiTrialAvailable: user.aiTrialAvailable,
+        aiTrialStartedAt: user.aiTrialStartedAt,
+        aiTrialConsumedAt: user.aiTrialConsumedAt,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
         role: user.role ?? 'user',

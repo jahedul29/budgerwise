@@ -29,6 +29,7 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useUIStore } from '@/store/uiStore';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { AssistantParseResult } from '@/lib/assistant/schemas';
+import type { AiAssistantAccessState, AiUsageSummary } from '@/types';
 
 /* ─── Speech Recognition types ─── */
 
@@ -277,40 +278,54 @@ export function AssistantLauncher() {
   const [listening, setListening] = useState(false);
   const [parseResult, setParseResult] = useState<AssistantParseResult | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
-  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [quota, setQuota] = useState<{
-    totalTokensUsed: number;
-    tokenLimit: number | null;
-    remaining: number | null;
-    usagePercent: number;
-    isUnlimited: boolean;
-    hardStopEnabled: boolean;
-  } | null>(null);
+  const [accessState, setAccessState] = useState<AiAssistantAccessState | null>(null);
+  const [quota, setQuota] = useState<AiUsageSummary | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState(false);
+  const [startingTrial, setStartingTrial] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Check if AI assistant is enabled for this user
-  useEffect(() => {
-    fetch('/api/assistant/access')
+  const refreshAccessState = useCallback(() => {
+    return fetch('/api/assistant/access')
       .then((res) => res.json())
-      .then((data) => setAiEnabled(Boolean(data.enabled)))
-      .catch(() => setAiEnabled(false));
+      .then((data) => {
+        setAccessState(data as AiAssistantAccessState);
+        setQuota((data as AiAssistantAccessState).usage ?? null);
+        setQuotaBlocked((data as AiAssistantAccessState).blockedReason === 'monthly_limit_reached');
+      })
+      .catch(() => {
+        setAccessState({
+          enabled: false,
+          launcherVisible: false,
+          entitlementType: 'locked',
+          trialAvailable: false,
+          blockedReason: 'locked',
+        });
+      });
   }, []);
+
+  useEffect(() => {
+    refreshAccessState();
+  }, [refreshAccessState]);
+
+  useEffect(() => {
+    if (!open) return;
+    refreshAccessState();
+  }, [open, refreshAccessState]);
 
   // Fetch usage quota when panel opens
   useEffect(() => {
-    if (!open || !aiEnabled) return;
+    if (!open || !accessState?.enabled) return;
     fetch('/api/assistant/usage')
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.totalTokensUsed === 'number') {
           setQuota(data);
-          setQuotaBlocked(data.hardStopEnabled && data.usagePercent >= 1 && !data.isUnlimited);
+          setQuotaBlocked(data.blockedReason === 'monthly_limit_reached');
         }
       })
       .catch(() => {});
-  }, [open, aiEnabled]);
+  }, [open, accessState?.enabled]);
 
   const { accounts } = useAccounts();
   const { categories } = useCategories();
@@ -423,9 +438,14 @@ export function AssistantLauncher() {
         }),
       });
       const data = await response.json().catch(() => null);
+      if (response.status === 403) {
+        await refreshAccessState();
+        throw new Error(data?.error ?? 'AI assistant access not enabled');
+      }
       if (response.status === 429) {
-        setQuotaBlocked(true);
+        setQuotaBlocked(data?.blockedReason === 'monthly_limit_reached' || data?.usage?.blockedReason === 'monthly_limit_reached');
         if (data?.usage) setQuota(data.usage);
+        await refreshAccessState();
         throw new Error(data?.error ?? 'Monthly AI token limit reached');
       }
       if (!response.ok || !data) {
@@ -519,19 +539,10 @@ export function AssistantLauncher() {
       toast.error(error instanceof Error ? error.message : 'Failed to parse command');
     } finally {
       setParsing(false);
-      // Refresh quota after each parse attempt
-      fetch('/api/assistant/usage')
-        .then((r) => r.json())
-        .then((data) => {
-          if (data && typeof data.totalTokensUsed === 'number') {
-            setQuota(data);
-            setQuotaBlocked(data.hardStopEnabled && data.usagePercent >= 1 && !data.isUnlimited);
-          }
-        })
-        .catch(() => {});
+      refreshAccessState();
     }
   }, [input, setAssistantTransactionDraft, setShowAddTransaction,
-      setAssistantCategoryDraft, setAssistantAccountDraft, setAssistantBudgetDraft, router]);
+      setAssistantCategoryDraft, setAssistantAccountDraft, setAssistantBudgetDraft, router, refreshAccessState]);
 
   const resolveAmbiguity = useCallback((key: string, id: string) => {
     if (!parseResult) return;
@@ -772,11 +783,32 @@ export function AssistantLauncher() {
     }
   };
 
+  const startTrial = useCallback(async () => {
+    setStartingTrial(true);
+    try {
+      const response = await fetch('/api/assistant/trial/start', { method: 'POST' });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data) {
+        throw new Error(data?.error ?? 'Failed to start free trial');
+      }
+      setAccessState(data as AiAssistantAccessState);
+      setQuota((data as AiAssistantAccessState).usage ?? null);
+      setQuotaBlocked(false);
+      toast.success('Free trial started');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to start free trial');
+    } finally {
+      setStartingTrial(false);
+    }
+  }, []);
+
   // Don't render until access check completes
-  if (aiEnabled === null) return null;
+  if (accessState === null) return null;
 
   // Disabled state — show FAB + locked panel with live demo preview
-  if (aiEnabled === false) {
+  if (!accessState.enabled) {
+    const trialCtaVisible = accessState.trialEnabled !== false && accessState.trialAvailable && !accessState.trialConsumedAt;
+    const showDemo = trialCtaVisible;
     const demoCommands = [
       { text: 'Spent 450 on groceries from cash', icon: <CreditCard className="h-3 w-3" />, color: 'text-emerald-400', label: 'Transaction added' },
       { text: 'Create a monthly budget of 5000 for food', icon: <PiggyBank className="h-3 w-3" />, color: 'text-sky-400', label: 'Budget created' },
@@ -892,6 +924,7 @@ export function AssistantLauncher() {
                 </div>
 
                 {/* Live demo preview — blurred commands flowing */}
+                {showDemo ? (
                 <div className="relative mx-4 mb-4 rounded-2xl overflow-hidden">
                   {/* Background glow */}
                   <div className="absolute inset-0 bg-gradient-to-br from-primary-500/[0.04] via-transparent to-accent/[0.04] dark:from-primary-500/[0.06] dark:to-accent/[0.06]" />
@@ -968,6 +1001,14 @@ export function AssistantLauncher() {
                     </motion.p>
                   </motion.div>
                 </div>
+                ) : (
+                  <div className="mx-4 mb-4 rounded-2xl border border-warning/20 bg-warning/[0.05] p-4 text-center">
+                    <p className="text-sm font-semibold text-navy-800 dark:text-navy-100">Your free trial has ended</p>
+                    <p className="mt-1 text-xs leading-relaxed text-navy-500 dark:text-navy-300">
+                      You have used all available trial tokens. Contact your administrator to unlock full monthly AI access.
+                    </p>
+                  </div>
+                )}
 
                 {/* CTA section */}
                 <motion.div
@@ -977,19 +1018,36 @@ export function AssistantLauncher() {
                   transition={{ delay: 0.5 }}
                 >
                   <p className="text-[13px] text-center text-navy-600 dark:text-navy-300 leading-relaxed">
-                    Manage your finances with simple voice or text commands.
-                    Request access from your team to get started.
+                    {trialCtaVisible
+                      ? 'Manage your finances with simple voice or text commands. Start your free trial to explore AI.'
+                      : 'Manage your finances with simple voice or text commands. Request access from your team to continue.'}
                   </p>
 
-                  {/* Request access email */}
-                  <a
-                    href={`mailto:?subject=${encodeURIComponent('Want AI Feature in BudgetWise')}&body=${encodeURIComponent('Hi,\n\nI\'d like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!')}`}
-                    className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
-                    style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                    Request Access
-                  </a>
+                  {trialCtaVisible ? (
+                    <button
+                      type="button"
+                      onClick={startTrial}
+                      disabled={startingTrial}
+                      className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:active:scale-100"
+                      style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
+                    >
+                      {startingTrial ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      {startingTrial ? 'Starting Free Trial...' : 'Start Free Trial'}
+                    </button>
+                  ) : (
+                    <a
+                      href={`mailto:?subject=${encodeURIComponent('Want AI Feature in BudgetWise')}&body=${encodeURIComponent('Hi,\n\nI\'d like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!')}`}
+                      className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
+                      style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                      Request Access
+                    </a>
+                  )}
 
                   {/* Feature grid */}
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1154,7 +1212,9 @@ export function AssistantLauncher() {
                       quota.usagePercent >= 0.75 ? 'text-warning' :
                       'text-navy-400 dark:text-navy-500'
                     }`}>
-                      {quota.usagePercent >= 1 ? 'Limit exceeded' : `${Math.round(quota.usagePercent * 100)}% of monthly limit`}
+                      {quota.bucketType === 'trial'
+                        ? (quota.usagePercent >= 1 ? 'Free trial finished' : `${Math.round(quota.usagePercent * 100)}% of free trial used`)
+                        : (quota.usagePercent >= 1 ? 'Limit exceeded' : `${Math.round(quota.usagePercent * 100)}% of monthly limit`)}
                     </span>
                     <span className="text-[10px] text-navy-400 dark:text-navy-500 tabular-nums">
                       {quota.totalTokensUsed >= 1_000_000 ? `${(quota.totalTokensUsed / 1_000_000).toFixed(1)}M` : quota.totalTokensUsed >= 1000 ? `${(quota.totalTokensUsed / 1000).toFixed(1)}K` : quota.totalTokensUsed}
@@ -1787,17 +1847,25 @@ export function AssistantLauncher() {
                       {listening ? <VoicePulse /> : <Mic className="h-4 w-4" />}
                     </button>
 
-                    {/* Textarea — 1 row default, max 2 rows */}
-                    <textarea
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      rows={1}
-                      disabled={parsing}
-                      placeholder="What would you like to do?"
-                      className="flex-1 min-w-0 bg-transparent px-1.5 py-1.5 text-[14px] leading-5 text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/35 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-y-auto scrollbar-hide"
-                      style={{ maxHeight: '50px' }}
-                    />
+                    {/* Textarea — 1 row default, max 2 rows, 200 char limit */}
+                    <div className="relative flex-1 min-w-0">
+                      <textarea
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => { if (e.target.value.length <= 200) setInput(e.target.value); }}
+                        rows={1}
+                        maxLength={200}
+                        disabled={parsing}
+                        placeholder="What would you like to do?"
+                        className="w-full bg-transparent px-1.5 py-1.5 text-[14px] leading-5 text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/35 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-y-auto scrollbar-hide"
+                        style={{ maxHeight: '50px' }}
+                      />
+                      {input.length > 150 && (
+                        <span className={`absolute -bottom-3.5 right-0 text-[9px] tabular-nums ${input.length >= 200 ? 'text-expense' : 'text-navy-400 dark:text-navy-500'}`}>
+                          {input.length}/200
+                        </span>
+                      )}
+                    </div>
 
                     {/* Send button — bottom-aligned, click only */}
                     <motion.button

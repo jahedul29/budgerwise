@@ -92,10 +92,14 @@ export type UserRole = 'superadmin' | 'admin' | 'manager' | 'user';
 
 export type AiUsageStatus = 'success' | 'error' | 'fallback';
 export type AiFeature = 'assistant_parse' | 'assistant_chat' | 'voice_transcription';
+export type AiEntitlementType = 'locked' | 'trial' | 'full';
+export type AiUsageBucketType = 'trial' | 'monthly';
 
 export interface AiGlobalSettings {
   defaultMonthlyTokenLimit: number;
+  defaultTrialTokenLimit: number;
   defaultAiHardStop: boolean;
+  trialEnabled?: boolean;
   /** Manually entered from OpenAI dashboard for cross-check */
   openaiReportedTokens?: number | null;
   openaiReportedMonth?: string | null;
@@ -114,6 +118,8 @@ export interface AiUsageLedgerEntry {
   totalTokens: number;
   requestId: string;
   status: AiUsageStatus;
+  entitlementTypeAtRequest?: AiEntitlementType;
+  bucketType?: AiUsageBucketType;
 }
 
 export interface AiUsageMonthlyAggregate {
@@ -139,4 +145,25 @@ export interface AiUsageSummary {
   isUnlimited: boolean;
   isCustomLimit: boolean;
   hardStopEnabled: boolean;
+  entitlementType?: AiEntitlementType;
+  bucketType?: AiUsageBucketType | null;
+  blockedReason?: 'locked' | 'trial_exhausted' | 'monthly_limit_reached' | null;
+  trialAvailable?: boolean;
+  trialStartedAt?: string | null;
+  trialConsumedAt?: string | null;
+}
+
+export interface AiAssistantAccessState {
+  enabled: boolean;
+  launcherVisible: boolean;
+  entitlementType: AiEntitlementType;
+  trialAvailable: boolean;
+  trialStartedAt?: string | null;
+  trialConsumedAt?: string | null;
+  trialTokenLimit?: number | null;
+  trialTokensUsed?: number;
+  trialRemaining?: number | null;
+  blockedReason?: 'locked' | 'trial_exhausted' | 'monthly_limit_reached' | null;
+  usage?: AiUsageSummary | null;
+  trialEnabled?: boolean;
 }

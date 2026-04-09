@@ -79,6 +79,7 @@ export async function GET() {
     totalUnlimitedUsers,
     activeAiUsers,
     defaultMonthlyTokenLimit: globalSettings.defaultMonthlyTokenLimit,
+    defaultTrialTokenLimit: globalSettings.defaultTrialTokenLimit,
     openaiReportedTokens: globalSettings.openaiReportedMonth === currentMonth
       ? (globalSettings.openaiReportedTokens ?? null)
       : null,
