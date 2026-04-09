@@ -9,6 +9,7 @@ import { SyncIndicator } from '@/components/shared/SyncIndicator';
 import { LogoMark } from '@/components/brand/LogoMark';
 import { SignOutButton } from '@/components/shared/SignOutButton';
 import { useStableUser } from '@/hooks/useStableUser';
+import { useUserRole } from '@/hooks/useUserRole';
 
 const mainNav = [
   { name: 'Dashboard', icon: Home, href: '/dashboard' },
@@ -23,12 +24,10 @@ const secondaryNav = [
   { name: 'Settings', icon: Settings, href: '/more/settings' },
 ];
 
-const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase();
-
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useStableUser();
-  const isAdmin = Boolean(ADMIN_EMAIL && user?.email?.trim().toLowerCase() === ADMIN_EMAIL);
+  const { isAdmin } = useUserRole();
 
 
   return (
@@ -115,8 +114,8 @@ export function Sidebar() {
             <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-amber-500">
               Admin
             </p>
-            {[{ name: 'Users', icon: Crown, href: '/admin/users' }].map((item) => {
-              const isActive = pathname === item.href;
+            {[{ name: 'Admin', icon: Crown, href: '/admin/dashboard' }].map((item) => {
+              const isActive = pathname.startsWith('/admin');
               return (
                 <Link
                   key={item.name}

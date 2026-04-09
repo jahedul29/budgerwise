@@ -92,10 +92,9 @@ GOOGLE_CLIENT_SECRET=
 # OpenAI (AI Assistant)
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-nano
-
-# Admin
-NEXT_PUBLIC_ADMIN_EMAIL=
 ```
+
+> **Admin setup:** Set the `role` field to `"superadmin"` directly in Firestore on the user document you want as the first admin (e.g. `users/your@email.com`). That user can then promote others via the admin UI.
 
 ---
 

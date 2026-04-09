@@ -9,7 +9,7 @@ import {
   parseAdminUserListParams,
   userMatchesFilters,
 } from '@/lib/admin-user-filters';
-import { getGlobalAiSettings } from '@/lib/ai-usage';
+import { getGlobalAiSettings, getCurrentMonth } from '@/lib/ai-usage';
 
 export async function GET(request: Request) {
   const session = await requireAdmin();
@@ -38,10 +38,7 @@ export async function GET(request: Request) {
 
     const globalSettings = await getGlobalAiSettings();
 
-    const currentMonth = (() => {
-      const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    })();
+    const currentMonth = getCurrentMonth();
 
     const maxScan = 1200;
     const batchSize = 200;
@@ -56,6 +53,7 @@ export async function GET(request: Request) {
       aiMonthlyTokenLimit?: number;
       aiUnlimited?: boolean;
       aiHardStop?: boolean;
+      role?: string;
       createdAt?: string;
       lastLoginAt?: string;
       sortValue: string;
@@ -84,6 +82,7 @@ export async function GET(request: Request) {
             aiMonthlyTokenLimit: typeof rawData.aiMonthlyTokenLimit === 'number' ? rawData.aiMonthlyTokenLimit : undefined,
             aiUnlimited: Boolean(rawData.aiUnlimited),
             aiHardStop: typeof rawData.aiHardStop === 'boolean' ? rawData.aiHardStop : undefined,
+            role: typeof rawData.role === 'string' ? rawData.role : 'user',
             sortValue: getSortValue(normalized, sortField),
           });
           if (matched.length >= limit + 1) break;
@@ -140,6 +139,7 @@ export async function GET(request: Request) {
         aiAssistantEnabled: user.aiAssistantEnabled,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
+        role: user.role ?? 'user',
         aiTokenUsage: {
           totalTokensUsed: totalUsed,
           tokenLimit: isUnlimited ? null : effectiveLimit,

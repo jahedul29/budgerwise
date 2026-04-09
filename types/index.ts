@@ -84,6 +84,10 @@ export interface Account {
   _syncStatus?: SyncStatus;
 }
 
+/* ─── User Roles ─── */
+
+export type UserRole = 'superadmin' | 'admin' | 'manager' | 'user';
+
 /* ─── AI Token Usage ─── */
 
 export type AiUsageStatus = 'success' | 'error' | 'fallback';

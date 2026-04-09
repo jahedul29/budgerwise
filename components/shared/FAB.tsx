@@ -25,8 +25,8 @@ export function FAB() {
       onClick={() => setShowAddTransaction(true)}
       className={`fixed right-4 lg:right-8 z-40 flex h-14 w-14 items-center justify-center rounded-2xl gradient-primary text-white shadow-glow transition-all hover:shadow-glow-lg ${
         aiVisible
-          ? 'bottom-[9.25rem] lg:bottom-[6.25rem]'
-          : 'bottom-20 lg:bottom-8'
+          ? 'bottom-[10.25rem] lg:bottom-[6.25rem]'
+          : 'bottom-[5.75rem] lg:bottom-8'
       }`}
     >
       <Plus className="h-6 w-6" strokeWidth={2.5} />

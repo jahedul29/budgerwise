@@ -18,10 +18,9 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden glass-nav border-t border-gray-200/60 dark:border-white/[0.06] safe-area-bottom"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.25rem)' }}
+      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden glass-nav border-t border-gray-200/60 dark:border-white/[0.06] safe-area-bottom safe-area-bottom-sm"
     >
-      <div className="mx-auto flex max-w-lg items-center justify-around px-1 py-1.5">
+      <div className="mx-auto flex max-w-lg items-center justify-around px-1.5 py-2">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href || pathname?.startsWith(tab.href + '/');
           return (
@@ -29,7 +28,7 @@ export function BottomNav() {
               key={tab.name}
               href={tab.href}
               className={cn(
-                'relative flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 text-[11px] font-medium transition-all min-w-[56px] no-tap-highlight',
+                'relative flex min-h-[52px] min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-2xl px-3.5 py-2.5 text-[11px] font-medium transition-all no-tap-highlight',
                 isActive
                   ? 'text-primary-600 dark:text-primary-400'
                   : 'text-navy-300 dark:text-navy-400 active:text-navy-500 dark:active:text-navy-200'
