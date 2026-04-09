@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { AppFooter } from '@/components/layout/AppFooter';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
@@ -24,6 +25,7 @@ export default async function AppLayout({
         <div className="flex-1 min-w-0 mesh-bg">
           <div className="relative z-10 mx-auto max-w-lg lg:max-w-full">
             {children}
+            <AppFooter />
           </div>
         </div>
       </div>

@@ -971,23 +971,24 @@ export function AssistantLauncher() {
 
                 {/* CTA section */}
                 <motion.div
-                  className="px-5 pb-5 space-y-3 safe-area-bottom"
+                  className="px-5 pb-5 space-y-3 safe-area-bottom safe-area-bottom safe-area-bottom-lg"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
                 >
                   <p className="text-[13px] text-center text-navy-600 dark:text-navy-300 leading-relaxed">
                     Manage your finances with simple voice or text commands.
+                    Request access from your team to get started.
                   </p>
 
-                  {/* Request access — generic mailto (no hardcoded admin email) */}
+                  {/* Request access email */}
                   <a
                     href={`mailto:?subject=${encodeURIComponent('Want AI Feature in BudgetWise')}&body=${encodeURIComponent('Hi,\n\nI\'d like to request access to the AI Assistant feature in BudgetWise.\n\nThe AI Assistant would help me manage transactions, budgets, and accounts using natural language commands — saving time and making the app even more useful.\n\nCould you please enable AI access for my account?\n\nThank you!')}`}
                     className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] shadow-md shadow-primary-500/20"
                     style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                    Request Access from Admin
+                    Request Access
                   </a>
 
                   {/* Feature grid */}

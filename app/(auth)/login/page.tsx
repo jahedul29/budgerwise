@@ -1,15 +1,15 @@
 'use client';
 import { signIn } from 'next-auth/react';
 import { motion } from 'framer-motion';
-import { Shield, Smartphone, PieChart, Wallet, ArrowRight, Zap, Globe } from 'lucide-react';
+import { Shield, Smartphone, PieChart, Wallet, ArrowRight, Zap, Globe, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LogoMark } from '@/components/brand/LogoMark';
 
 const features = [
   { icon: Wallet, title: 'Track Everything', description: 'Monitor income, expenses, and budgets in one elegant place', color: '#06D6A0' },
+  { icon: Sparkles, title: 'AI Assistant', description: 'Voice and text commands to manage finances with natural language', color: '#A78BFA' },
   { icon: PieChart, title: 'Visual Analytics', description: 'Beautiful charts and deep insights about your spending habits', color: '#118AB2' },
   { icon: Smartphone, title: 'Works Offline', description: 'Full functionality even without internet connection', color: '#FFD166' },
-  { icon: Shield, title: 'Secure & Private', description: 'Your financial data is encrypted and protected always', color: '#FF6B6B' },
 ];
 
 const stagger = {
@@ -76,7 +76,7 @@ export default function LoginPage() {
               transition={{ delay: 0.35, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
               className="mb-8 text-lg lg:text-xl text-navy-400 dark:text-navy-300 max-w-md mx-auto lg:mx-0 leading-relaxed"
             >
-              Smart budgeting with beautiful insights. Take control of your finances with an app that works everywhere.
+              AI-powered budgeting with beautiful insights. Manage your finances with voice commands, smart analytics, and an app that works everywhere.
             </motion.p>
 
             {/* Desktop features list */}
@@ -162,9 +162,9 @@ export default function LoginPage() {
                     <p className="text-[11px] text-navy-400">Currencies</p>
                   </div>
                   <div className="text-center p-3 rounded-xl bg-surface-light/50 dark:bg-white/[0.03]">
-                    <Shield className="h-4 w-4 mx-auto mb-1 text-income" />
-                    <p className="text-lg font-display font-bold text-navy-800 dark:text-navy-50">E2E</p>
-                    <p className="text-[11px] text-navy-400">Encrypted</p>
+                    <Sparkles className="h-4 w-4 mx-auto mb-1 text-violet-500" />
+                    <p className="text-lg font-display font-bold text-navy-800 dark:text-navy-50">AI</p>
+                    <p className="text-[11px] text-navy-400">Powered</p>
                   </div>
                 </div>
 

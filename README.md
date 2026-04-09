@@ -21,7 +21,10 @@ A premium personal budgeting application built with Next.js, Firebase, and AI-po
 - **Smart Parsing** — AI-powered intent detection with fuzzy entity matching and ambiguity resolution
 - **Auto-Form Population** — Parsed data automatically populates the relevant creation form for user review before submission
 - **Multi-Entity Support** — Handles transactions, accounts, categories, and budgets through a single conversational interface
-- **Admin-Gated Access** — AI features are toggled per-user by an admin
+- **Token-Based Quota** — Per-user monthly token limits with configurable defaults, custom overrides, unlimited mode, and hard-stop enforcement
+- **Usage Tracking** — Every AI request is logged with input/output tokens, model, feature, and status; monthly aggregates updated atomically
+- **User Quota Visibility** — Progress bar in the assistant panel showing used/remaining tokens with warning states at 75%, 90%, and limit reached
+- **FOMO Locked State** — Users without AI access see an animated preview of commands with a frosted lock overlay and a request-access CTA
 
 ### Offline-First & PWA
 - **Service Worker** — Full offline support with background sync
@@ -31,10 +34,19 @@ A premium personal budgeting application built with Next.js, Firebase, and AI-po
 - **Cached User Session** — Works offline with cached authentication state
 
 ### Admin Panel
-- **User Management** — View all registered users with profile details, join date, and last login
-- **AI Access Control** — Enable or disable AI assistant access per user
-- **Search** — Filter users by name or email
-- **Admin-Only Access** — Protected by environment variable email matching on both client and server
+- **Dashboard** — Overview page with user stats (total, active 7d/30d, AI-enabled), role breakdown, AI token usage summary, and OpenAI cross-check
+- **User Management** — Paginated user list with search, AI status filters, date range filters, sorting, and bulk AI toggle
+- **Per-User Controls** — Click any user to open a detail modal with AI config (enable/disable, custom token limit, unlimited mode, hard stop) and usage stats
+- **Role Management** — Superadmins can assign roles (superadmin, admin, manager, user) from the user detail modal
+- **Global AI Settings** — Collapsible panel on the dashboard to configure default monthly token limit, hard stop, and manual OpenAI reported tokens for cross-checking
+- **Tab Navigation** — Overview and Users tabs across the admin section
+
+### Role-Based Access Control
+- **Superadmin** — Full access including role management; bootstrapped by setting `role: "superadmin"` in Firestore
+- **Admin** — Full access to admin panel and all settings
+- **Manager** — Can view admin pages and manage user AI access
+- **User** — Regular user (default); no admin access
+- All roles are stored in Firestore (`users/{email}.role`) — no environment variable dependency
 
 ### Design & UX
 - **Glassmorphism UI** — Frosted glass cards, gradient accents, and grain texture overlay
@@ -47,7 +59,7 @@ A premium personal budgeting application built with Next.js, Firebase, and AI-po
 - **Google OAuth** — NextAuth v5 with JWT session strategy
 - **User Profile Storage** — Name, email, and avatar stored in Firestore on every sign-in
 - **Server-Side Route Protection** — Auth checks at layout level with redirect to login
-- **API-Level Gating** — AI endpoints verify both authentication and per-user access flags
+- **API-Level Gating** — AI endpoints verify authentication, per-user access flags, and token quota before processing
 
 ---
 
@@ -94,7 +106,17 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-nano
 ```
 
-> **Admin setup:** Set the `role` field to `"superadmin"` directly in Firestore on the user document you want as the first admin (e.g. `users/your@email.com`). That user can then promote others via the admin UI.
+---
+
+## Admin Setup
+
+There is no admin email environment variable. Roles are managed entirely in Firestore:
+
+1. Sign in to the app with your Google account
+2. In the Firebase Console, find your user document at `users/{your-email}`
+3. Add a field: `role` with value `"superadmin"`
+4. Refresh the app — you'll see the Admin link in the sidebar
+5. Use the admin UI to promote other users to admin or manager
 
 ---
 

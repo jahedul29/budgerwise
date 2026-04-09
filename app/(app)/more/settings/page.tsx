@@ -633,20 +633,6 @@ export default function SettingsPage() {
             </button>
           </div>
         </motion.div>
-
-        {/* ─── ABOUT ─── */}
-        <motion.div variants={fadeUp} className="pt-2 pb-4">
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl gradient-primary shadow-glow">
-              <LogoMark className="h-6.5 w-6.5" />
-            </div>
-            <p className="text-lg font-display font-extrabold tracking-tight text-navy-800 dark:text-navy-50">BudgetWise</p>
-            <p className="text-[11px] font-semibold text-navy-300 dark:text-navy-400 mt-1 tracking-wide uppercase">Version 1.0.0</p>
-            <p className="text-xs text-navy-400 dark:text-navy-300 mt-3 max-w-[240px] leading-relaxed">
-              Smart budgeting with beautiful insights. Your finances, under control.
-            </p>
-          </div>
-        </motion.div>
       </motion.div>
     </PageWrapper>
   );
