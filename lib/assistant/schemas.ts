@@ -80,7 +80,7 @@ export const assistantResolutionSchema = z.object({
 });
 
 export const assistantParseRequestSchema = z.object({
-  text: z.string().min(1),
+  text: z.string().min(1).max(200),
   locale: z.string().optional(),
   timezone: z.string().optional(),
   nowIso: z.string().optional(),

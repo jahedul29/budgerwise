@@ -1787,17 +1787,25 @@ export function AssistantLauncher() {
                       {listening ? <VoicePulse /> : <Mic className="h-4 w-4" />}
                     </button>
 
-                    {/* Textarea — 1 row default, max 2 rows */}
-                    <textarea
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      rows={1}
-                      disabled={parsing}
-                      placeholder="What would you like to do?"
-                      className="flex-1 min-w-0 bg-transparent px-1.5 py-1.5 text-[14px] leading-5 text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/35 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-y-auto scrollbar-hide"
-                      style={{ maxHeight: '50px' }}
-                    />
+                    {/* Textarea — 1 row default, max 2 rows, 200 char limit */}
+                    <div className="relative flex-1 min-w-0">
+                      <textarea
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => { if (e.target.value.length <= 200) setInput(e.target.value); }}
+                        rows={1}
+                        maxLength={200}
+                        disabled={parsing}
+                        placeholder="What would you like to do?"
+                        className="w-full bg-transparent px-1.5 py-1.5 text-[14px] leading-5 text-navy-800 dark:text-navy-50 placeholder:text-navy-400/50 dark:placeholder:text-navy-400/35 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-y-auto scrollbar-hide"
+                        style={{ maxHeight: '50px' }}
+                      />
+                      {input.length > 150 && (
+                        <span className={`absolute -bottom-3.5 right-0 text-[9px] tabular-nums ${input.length >= 200 ? 'text-expense' : 'text-navy-400 dark:text-navy-500'}`}>
+                          {input.length}/200
+                        </span>
+                      )}
+                    </div>
 
                     {/* Send button — bottom-aligned, click only */}
                     <motion.button
