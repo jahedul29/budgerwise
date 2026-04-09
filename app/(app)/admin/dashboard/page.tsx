@@ -32,6 +32,7 @@ interface UsageSummary {
   totalUnlimitedUsers: number;
   activeAiUsers: number;
   defaultMonthlyTokenLimit: number;
+  defaultTrialTokenLimit: number;
   openaiReportedTokens: number | null;
 }
 
@@ -51,7 +52,13 @@ export default function AdminDashboardPage() {
 
   // Global AI settings
   const [showSettings, setShowSettings] = useState(false);
-  const [globalSettings, setGlobalSettings] = useState<{ defaultMonthlyTokenLimit: number; defaultAiHardStop: boolean; openaiReportedTokens?: number | null } | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<{
+    defaultMonthlyTokenLimit: number;
+    defaultTrialTokenLimit: number;
+    defaultAiHardStop: boolean;
+    trialEnabled?: boolean;
+    openaiReportedTokens?: number | null;
+  } | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
 
@@ -346,6 +353,23 @@ export default function AdminDashboardPage() {
                       />
                       <p className="text-[10px] text-navy-400 mt-1">
                         Currently: {fmtTokens(globalSettings.defaultMonthlyTokenLimit)} tokens/month
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-navy-500 dark:text-navy-400 mb-1">
+                        Default Trial Token Limit
+                      </label>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={globalSettings.defaultTrialTokenLimit}
+                        onChange={(e) => setGlobalSettings({ ...globalSettings, defaultTrialTokenLimit: Number(e.target.value) || 0 })}
+                        className="w-full sm:w-64 h-9 rounded-xl border border-gray-200/50 dark:border-white/[0.06] bg-white/80 dark:bg-white/[0.03] px-3 text-sm text-navy-800 dark:text-navy-100 focus:outline-none focus:border-primary-500/40 focus:ring-2 focus:ring-primary-500/15"
+                      />
+                      <p className="text-[10px] text-navy-400 mt-1">
+                        Applies to new trial activations only. Currently: {fmtTokens(globalSettings.defaultTrialTokenLimit)} tokens
                       </p>
                     </div>
 

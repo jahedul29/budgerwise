@@ -48,6 +48,10 @@ interface UserRecord {
   email?: string;
   avatar?: string;
   aiAssistantEnabled?: boolean;
+  aiEntitlementType?: 'locked' | 'trial' | 'full';
+  aiTrialAvailable?: boolean;
+  aiTrialStartedAt?: string | null;
+  aiTrialConsumedAt?: string | null;
   createdAt?: string;
   lastLoginAt?: string;
   role?: string;
@@ -69,6 +73,8 @@ interface UsersResponse {
 }
 
 type AiStatusFilter = 'all' | 'enabled' | 'disabled';
+type AccessStatusFilter = 'all' | 'full' | 'trial' | 'locked';
+type TrialStatusFilter = 'all' | 'active' | 'available' | 'blocked';
 type SortField = 'lastLoginAt' | 'createdAt' | 'name' | 'email';
 type SortDirection = 'asc' | 'desc';
 
@@ -79,12 +85,15 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [blockingTrialUserId, setBlockingTrialUserId] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkConfirm, setBulkConfirm] = useState<'enable' | 'disable' | null>(null);
+  const [bulkConfirm, setBulkConfirm] = useState<'enable' | 'disable' | 'block-trial' | null>(null);
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [aiStatus, setAiStatus] = useState<AiStatusFilter>('all');
+  const [accessStatus, setAccessStatus] = useState<AccessStatusFilter>('all');
+  const [trialStatus, setTrialStatus] = useState<TrialStatusFilter>('all');
   const [createdRange, setCreatedRange] = useState<DateRange | undefined>(undefined);
   const [activeWithinDays, setActiveWithinDays] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('lastLoginAt');
@@ -103,6 +112,13 @@ export default function AdminUsersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [aiConfig, setAiConfig] = useState<{
     aiAssistantEnabled: boolean;
+    aiEntitlementType: 'locked' | 'trial' | 'full';
+    aiTrialAvailable: boolean;
+    aiTrialStartedAt: string | null;
+    aiTrialConsumedAt: string | null;
+    aiTrialTokenLimit: number | null;
+    aiTrialTokensUsed: number;
+    aiTrialCompleted: boolean;
     aiUseCustomTokenLimit: boolean;
     aiMonthlyTokenLimit: number | null;
     aiUnlimited: boolean;
@@ -120,7 +136,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     setPageIndex(0);
     setPageCursors([null]);
-  }, [search, aiStatus, createdRange, activeWithinDays, sortField, sortDirection, pageSize]);
+  }, [search, aiStatus, accessStatus, trialStatus, createdRange, activeWithinDays, sortField, sortDirection, pageSize]);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -131,6 +147,8 @@ export default function AdminUsersPage() {
       params.set('sortField', sortField);
       params.set('sortDirection', sortDirection);
       params.set('aiStatus', aiStatus);
+      params.set('accessStatus', accessStatus);
+      params.set('trialStatus', trialStatus);
       if (search) params.set('q', search);
       if (createdRange?.start) params.set('createdFrom', createdRange.start.toISOString().slice(0, 10));
       if (createdRange?.end) params.set('createdTo', createdRange.end.toISOString().slice(0, 10));
@@ -159,6 +177,8 @@ export default function AdminUsersPage() {
     }
   }, [
     aiStatus,
+    accessStatus,
+    trialStatus,
     createdRange,
     currentCursor,
     pageSize,
@@ -201,10 +221,13 @@ export default function AdminUsersPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'set_ai',
           enabled,
           filters: {
             q: search,
             aiStatus,
+            accessStatus,
+            trialStatus,
             createdFrom: createdRange?.start?.toISOString().slice(0, 10) || undefined,
             createdTo: createdRange?.end?.toISOString().slice(0, 10) || undefined,
             activeWithinDays: activeWithinDays === 'all' ? undefined : Number(activeWithinDays),
@@ -223,6 +246,36 @@ export default function AdminUsersPage() {
     }
   };
 
+  const bulkBlockTrial = async () => {
+    setBulkLoading(true);
+    try {
+      const res = await fetch('/api/admin/users/bulk-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'block_trial',
+          filters: {
+            q: search,
+            aiStatus,
+            accessStatus,
+            trialStatus,
+            createdFrom: createdRange?.start?.toISOString().slice(0, 10) || undefined,
+            createdTo: createdRange?.end?.toISOString().slice(0, 10) || undefined,
+            activeWithinDays: activeWithinDays === 'all' ? undefined : Number(activeWithinDays),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) throw new Error(data?.error || 'Bulk trial block failed');
+      toast.success(`Blocked trial for ${data.updated} user(s)`);
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Bulk trial block failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const openUserDetail = async (user: UserRecord) => {
     setSelectedUser(user);
     setDetailLoading(true);
@@ -232,6 +285,13 @@ export default function AdminUsersPage() {
       if (res.ok && data) {
         setAiConfig({
           aiAssistantEnabled: Boolean(data.aiAssistantEnabled),
+          aiEntitlementType: data.aiEntitlementType === 'trial' || data.aiEntitlementType === 'full' ? data.aiEntitlementType : 'locked',
+          aiTrialAvailable: data.aiTrialAvailable !== false,
+          aiTrialStartedAt: data.aiTrialStartedAt ?? null,
+          aiTrialConsumedAt: data.aiTrialConsumedAt ?? null,
+          aiTrialTokenLimit: data.aiTrialTokenLimit ?? null,
+          aiTrialTokensUsed: data.aiTrialTokensUsed ?? 0,
+          aiTrialCompleted: Boolean(data.aiTrialCompleted),
           aiUseCustomTokenLimit: Boolean(data.aiUseCustomTokenLimit),
           aiMonthlyTokenLimit: data.aiMonthlyTokenLimit ?? null,
           aiUnlimited: Boolean(data.aiUnlimited),
@@ -242,6 +302,52 @@ export default function AdminUsersPage() {
       toast.error('Failed to load AI config');
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const blockTrialForUser = async (userId: string) => {
+    setBlockingTrialUserId(userId);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/ai-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiTrialAvailable: false }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) throw new Error(data?.error || 'Failed to block trial');
+
+      setUsers((prev) => prev.map((u) => (
+        u.id === userId
+          ? {
+              ...u,
+              aiTrialAvailable: false,
+              aiEntitlementType: u.aiEntitlementType === 'trial' ? 'locked' : u.aiEntitlementType,
+            }
+          : u
+      )));
+      setSelectedUser((prev) => (
+        prev && prev.id === userId
+          ? {
+              ...prev,
+              aiTrialAvailable: false,
+              aiEntitlementType: prev.aiEntitlementType === 'trial' ? 'locked' : prev.aiEntitlementType,
+            }
+          : prev
+      ));
+      setAiConfig((prev) => (
+        prev
+          ? {
+              ...prev,
+              aiTrialAvailable: false,
+              aiEntitlementType: prev.aiEntitlementType === 'trial' ? 'locked' : prev.aiEntitlementType,
+            }
+          : prev
+      ));
+      toast.success('Trial blocked for user');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to block trial');
+    } finally {
+      setBlockingTrialUserId(null);
     }
   };
 
@@ -335,6 +441,8 @@ export default function AdminUsersPage() {
   const hasActiveFilters = Boolean(
     search ||
     aiStatus !== 'all' ||
+    accessStatus !== 'all' ||
+    trialStatus !== 'all' ||
     createdRange ||
     activeWithinDays !== 'all' ||
     sortField !== 'lastLoginAt' ||
@@ -365,6 +473,19 @@ export default function AdminUsersPage() {
       day: 'numeric',
       year: 'numeric',
     });
+  };
+
+  const getUserAccessLabel = (user: UserRecord) => {
+    if (user.aiEntitlementType === 'trial') {
+      return { label: 'On Trial', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' };
+    }
+    if (user.aiTrialConsumedAt) {
+      return { label: 'Trial Ended', className: 'bg-navy-100/80 dark:bg-white/[0.06] text-navy-500 dark:text-navy-300' };
+    }
+    if (user.aiTrialAvailable === false) {
+      return { label: 'Trial Blocked', className: 'bg-expense/[0.10] text-expense' };
+    }
+    return { label: 'Trial Open', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' };
   };
 
   return (
@@ -449,6 +570,48 @@ export default function AdminUsersPage() {
               ))}
             </div>
 
+            <div className="inline-flex rounded-xl bg-surface-light/80 dark:bg-white/[0.03] p-0.5 border border-gray-200/40 dark:border-white/[0.04]">
+              {[
+                { value: 'all', label: 'Access: All' },
+                { value: 'full', label: 'Full' },
+                { value: 'trial', label: 'Trial' },
+                { value: 'locked', label: 'Locked' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAccessStatus(opt.value as AccessStatusFilter)}
+                  className={`rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition-all duration-200 ${
+                    accessStatus === opt.value
+                      ? 'bg-white dark:bg-white/[0.10] text-navy-800 dark:text-navy-50 shadow-sm'
+                      : 'text-navy-400 dark:text-navy-400 hover:text-navy-600 dark:hover:text-navy-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex rounded-xl bg-surface-light/80 dark:bg-white/[0.03] p-0.5 border border-gray-200/40 dark:border-white/[0.04]">
+              {[
+                { value: 'all', label: 'Trial: All' },
+                { value: 'active', label: 'Active' },
+                { value: 'available', label: 'Open' },
+                { value: 'blocked', label: 'Blocked' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTrialStatus(opt.value as TrialStatusFilter)}
+                  className={`rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition-all duration-200 ${
+                    trialStatus === opt.value
+                      ? 'bg-white dark:bg-white/[0.10] text-navy-800 dark:text-navy-50 shadow-sm'
+                      : 'text-navy-400 dark:text-navy-400 hover:text-navy-600 dark:hover:text-navy-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             {/* Activity */}
             <div className="inline-flex rounded-xl bg-surface-light/80 dark:bg-white/[0.03] p-0.5 border border-gray-200/40 dark:border-white/[0.04]">
               {[
@@ -508,6 +671,8 @@ export default function AdminUsersPage() {
                     setSearchInput('');
                     setSearch('');
                     setAiStatus('all');
+                    setAccessStatus('all');
+                    setTrialStatus('all');
                     setCreatedRange(undefined);
                     setActiveWithinDays('all');
                     setSortField('lastLoginAt');
@@ -537,6 +702,18 @@ export default function AdminUsersPage() {
               <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-lg bg-primary-500/[0.08] dark:bg-primary-500/[0.10] text-[11px] font-semibold text-primary-700 dark:text-primary-300 border border-primary-500/15">
                 AI {aiStatus}
                 <button type="button" onClick={() => setAiStatus('all')} className="p-0.5 rounded-md hover:bg-primary-500/10 transition-colors"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {accessStatus !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-lg bg-primary-500/[0.08] dark:bg-primary-500/[0.10] text-[11px] font-semibold text-primary-700 dark:text-primary-300 border border-primary-500/15">
+                Access {accessStatus}
+                <button type="button" onClick={() => setAccessStatus('all')} className="p-0.5 rounded-md hover:bg-primary-500/10 transition-colors"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {trialStatus !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-lg bg-primary-500/[0.08] dark:bg-primary-500/[0.10] text-[11px] font-semibold text-primary-700 dark:text-primary-300 border border-primary-500/15">
+                Trial {trialStatus}
+                <button type="button" onClick={() => setTrialStatus('all')} className="p-0.5 rounded-md hover:bg-primary-500/10 transition-colors"><X className="h-3 w-3" /></button>
               </span>
             )}
             {activeWithinDays !== 'all' && (
@@ -570,6 +747,14 @@ export default function AdminUsersPage() {
                 </button>
                 <button type="button" onClick={() => setBulkConfirm(null)} className="h-7 px-2 rounded-lg text-[11px] font-medium text-navy-400 hover:bg-navy-100/60 dark:hover:bg-white/[0.04]">Cancel</button>
               </span>
+            ) : bulkConfirm === 'block-trial' ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-[11px] text-expense font-medium">Block trial for filtered users?</span>
+                <button type="button" onClick={() => { setBulkConfirm(null); bulkBlockTrial(); }} disabled={bulkLoading} className="h-7 px-2.5 rounded-lg text-[11px] font-semibold bg-expense text-white hover:brightness-110 transition-colors disabled:opacity-50">
+                  {bulkLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm'}
+                </button>
+                <button type="button" onClick={() => setBulkConfirm(null)} className="h-7 px-2 rounded-lg text-[11px] font-medium text-navy-400 hover:bg-navy-100/60 dark:hover:bg-white/[0.04]">Cancel</button>
+              </span>
             ) : (
               <>
                 <button
@@ -580,6 +765,15 @@ export default function AdminUsersPage() {
                 >
                   <ShieldCheck className="h-3 w-3" />
                   Bulk enable
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkConfirm('block-trial')}
+                  disabled={bulkLoading}
+                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-semibold text-expense hover:bg-expense/[0.08] transition-colors disabled:opacity-50"
+                >
+                  <ShieldX className="h-3 w-3" />
+                  Block trial
                 </button>
                 <button
                   type="button"
@@ -625,6 +819,7 @@ export default function AdminUsersPage() {
               ) : (
                 users.map((user, i) => {
                   const usage = user.aiTokenUsage;
+                  const accessBadge = getUserAccessLabel(user);
                   return (
                     <motion.div
                       key={user.id}
@@ -655,6 +850,11 @@ export default function AdminUsersPage() {
                           <span className="text-[10px] text-navy-400 dark:text-navy-500 whitespace-nowrap">
                             Last login {fmtDate(user.lastLoginAt)}
                           </span>
+                          {accessBadge && (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${accessBadge.className}`}>
+                              {accessBadge.label}
+                            </span>
+                          )}
                           {user.role && user.role !== 'user' && (
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
                               user.role === 'superadmin' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
@@ -910,6 +1110,42 @@ export default function AdminUsersPage() {
                   </div>
                 )}
 
+                {aiConfig && (
+                  <div className="rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-surface-light/50 dark:bg-white/[0.02] p-3 space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-navy-400 dark:text-navy-500">Trial Status</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-navy-400 dark:text-navy-500">Access</p>
+                        <p className="text-sm font-bold text-navy-800 dark:text-navy-50">
+                          {aiConfig.aiEntitlementType === 'full'
+                            ? 'Full AI'
+                            : aiConfig.aiEntitlementType === 'trial'
+                              ? 'On Trial'
+                              : aiConfig.aiTrialCompleted
+                                ? 'Trial Ended'
+                              : aiConfig.aiTrialAvailable
+                                ? 'Trial Open'
+                                : 'Trial Blocked'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-navy-400 dark:text-navy-500">Trial Tokens</p>
+                        <p className="text-sm font-bold text-navy-800 dark:text-navy-50 tabular-nums">
+                          {fmtTokens(aiConfig.aiTrialTokensUsed)} / {fmtTokens(aiConfig.aiTrialTokenLimit ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-navy-400 dark:text-navy-500">Started</p>
+                        <p className="text-[12px] text-navy-600 dark:text-navy-300">{fmtDate(aiConfig.aiTrialStartedAt ?? undefined)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-navy-400 dark:text-navy-500">Blocked/Ended</p>
+                        <p className="text-[12px] text-navy-600 dark:text-navy-300">{fmtDate(aiConfig.aiTrialConsumedAt ?? undefined)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* AI Config Controls */}
                 {detailLoading ? (
                   <div className="flex items-center justify-center py-6">
@@ -932,6 +1168,35 @@ export default function AdminUsersPage() {
                         className="h-4 w-4 rounded border-navy-300 text-primary-500 focus:ring-primary-500/20"
                       />
                     </label>
+
+                    {!aiConfig.aiTrialCompleted && (
+                      <>
+                        <label className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-surface-light/50 dark:bg-white/[0.02] p-3 cursor-pointer">
+                          <div>
+                            <p className="text-[13px] font-semibold text-navy-800 dark:text-navy-50">Free Trial Access</p>
+                            <p className="text-[11px] text-navy-400">Turn this off to block the user from starting or continuing a free trial.</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={aiConfig.aiTrialAvailable}
+                            onChange={(e) => setAiConfig({ ...aiConfig, aiTrialAvailable: e.target.checked })}
+                            className="h-4 w-4 rounded border-navy-300 text-primary-500 focus:ring-primary-500/20"
+                          />
+                        </label>
+
+                        {!aiConfig.aiTrialAvailable && (
+                          <button
+                            type="button"
+                            onClick={() => blockTrialForUser(selectedUser.id)}
+                            disabled={blockingTrialUserId === selectedUser.id}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-expense hover:bg-expense/[0.08] transition-colors disabled:opacity-50"
+                          >
+                            {blockingTrialUserId === selectedUser.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldX className="h-3.5 w-3.5" />}
+                            Trial blocked
+                          </button>
+                        )}
+                      </>
+                    )}
 
                     {/* Unlimited */}
                     <label className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-surface-light/50 dark:bg-white/[0.02] p-3 cursor-pointer">

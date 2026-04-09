@@ -21,8 +21,23 @@ export async function GET(
   }
 
   const data = doc.data()!;
+  const trialTokenLimit = typeof data.aiTrialTokenLimit === 'number' ? data.aiTrialTokenLimit : null;
+  const trialTokensUsed = typeof data.aiTrialTokensUsed === 'number' ? data.aiTrialTokensUsed : 0;
+  const trialCompleted = trialTokenLimit !== null && trialTokenLimit > 0 && trialTokensUsed >= trialTokenLimit;
   return NextResponse.json({
     aiAssistantEnabled: Boolean(data.aiAssistantEnabled),
+    aiEntitlementType:
+      data.aiAssistantEnabled === true
+        ? 'full'
+        : data.aiEntitlementType === 'trial'
+          ? 'trial'
+          : 'locked',
+    aiTrialAvailable: data.aiTrialAvailable !== false,
+    aiTrialStartedAt: typeof data.aiTrialStartedAt === 'string' ? data.aiTrialStartedAt : null,
+    aiTrialConsumedAt: typeof data.aiTrialConsumedAt === 'string' ? data.aiTrialConsumedAt : null,
+    aiTrialTokenLimit: trialTokenLimit,
+    aiTrialTokensUsed: trialTokensUsed,
+    aiTrialCompleted: trialCompleted,
     aiUseCustomTokenLimit: Boolean(data.aiUseCustomTokenLimit),
     aiMonthlyTokenLimit: typeof data.aiMonthlyTokenLimit === 'number' ? data.aiMonthlyTokenLimit : null,
     aiUnlimited: Boolean(data.aiUnlimited),
@@ -55,9 +70,41 @@ export async function POST(
   }
 
   const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  const existingData = doc.data() ?? {};
+  const existingTrialTokenLimit =
+    typeof existingData.aiTrialTokenLimit === 'number' ? existingData.aiTrialTokenLimit : null;
+  const existingTrialTokensUsed =
+    typeof existingData.aiTrialTokensUsed === 'number' ? existingData.aiTrialTokensUsed : 0;
+  const existingTrialCompleted =
+    existingTrialTokenLimit !== null &&
+    existingTrialTokenLimit > 0 &&
+    existingTrialTokensUsed >= existingTrialTokenLimit;
 
   if (typeof body.aiAssistantEnabled === 'boolean') {
     update.aiAssistantEnabled = body.aiAssistantEnabled;
+  }
+  if (typeof body.aiTrialAvailable === 'boolean') {
+    if (body.aiTrialAvailable && existingTrialCompleted) {
+      return NextResponse.json({ error: 'Completed trials cannot be reopened' }, { status: 400 });
+    }
+
+    update.aiTrialAvailable = body.aiTrialAvailable;
+    if (!body.aiTrialAvailable) {
+      update.aiEntitlementType =
+        existingData.aiAssistantEnabled === true || existingData.aiEntitlementType === 'full'
+          ? 'full'
+          : existingData.aiEntitlementType === 'trial'
+            ? 'locked'
+            : 'locked';
+    } else if (
+      existingData.aiAssistantEnabled !== true &&
+      existingData.aiEntitlementType !== 'full' &&
+      typeof existingData.aiTrialStartedAt === 'string' &&
+      existingData.aiTrialStartedAt &&
+      !existingTrialCompleted
+    ) {
+      update.aiEntitlementType = 'trial';
+    }
   }
   if (typeof body.aiUseCustomTokenLimit === 'boolean') {
     update.aiUseCustomTokenLimit = body.aiUseCustomTokenLimit;

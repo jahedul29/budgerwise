@@ -11,7 +11,7 @@ export function FAB() {
   useEffect(() => {
     fetch('/api/assistant/access')
       .then((res) => res.json())
-      .then((data) => setAiVisible(Boolean(data.enabled)))
+      .then((data) => setAiVisible(Boolean(data.launcherVisible)))
       .catch(() => setAiVisible(false));
   }, []);
 

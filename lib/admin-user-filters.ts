@@ -1,10 +1,14 @@
 export type AdminUserSortField = 'lastLoginAt' | 'createdAt' | 'name' | 'email';
 export type AdminUserSortDirection = 'asc' | 'desc';
 export type AdminUserAiStatusFilter = 'all' | 'enabled' | 'disabled';
+export type AdminUserAccessStatusFilter = 'all' | 'full' | 'trial' | 'locked';
+export type AdminUserTrialStatusFilter = 'all' | 'active' | 'available' | 'blocked';
 
 export interface AdminUserFilters {
   q: string;
   aiStatus: AdminUserAiStatusFilter;
+  accessStatus: AdminUserAccessStatusFilter;
+  trialStatus: AdminUserTrialStatusFilter;
   createdFrom?: string;
   createdTo?: string;
   activeWithinDays?: number;
@@ -24,6 +28,10 @@ export interface AdminUserRawRecord {
   email?: unknown;
   avatar?: unknown;
   aiAssistantEnabled?: unknown;
+  aiEntitlementType?: unknown;
+  aiTrialAvailable?: unknown;
+  aiTrialStartedAt?: unknown;
+  aiTrialConsumedAt?: unknown;
   createdAt?: unknown;
   lastLoginAt?: unknown;
 }
@@ -67,6 +75,16 @@ export function parseAdminUserListParams(url: URL): AdminUserListParams {
   const aiStatusParam = url.searchParams.get('aiStatus');
   const aiStatus: AdminUserAiStatusFilter =
     aiStatusParam === 'enabled' || aiStatusParam === 'disabled' ? aiStatusParam : 'all';
+  const accessStatusParam = url.searchParams.get('accessStatus');
+  const accessStatus: AdminUserAccessStatusFilter =
+    accessStatusParam === 'full' || accessStatusParam === 'trial' || accessStatusParam === 'locked'
+      ? accessStatusParam
+      : 'all';
+  const trialStatusParam = url.searchParams.get('trialStatus');
+  const trialStatus: AdminUserTrialStatusFilter =
+    trialStatusParam === 'active' || trialStatusParam === 'available' || trialStatusParam === 'blocked'
+      ? trialStatusParam
+      : 'all';
 
   const activeWithinDaysRaw = url.searchParams.get('activeWithinDays');
   const activeWithinDaysParsed = activeWithinDaysRaw ? Number(activeWithinDaysRaw) : NaN;
@@ -82,6 +100,8 @@ export function parseAdminUserListParams(url: URL): AdminUserListParams {
     filters: {
       q: (url.searchParams.get('q') || '').trim(),
       aiStatus,
+      accessStatus,
+      trialStatus,
       createdFrom: url.searchParams.get('createdFrom') || undefined,
       createdTo: url.searchParams.get('createdTo') || undefined,
       activeWithinDays,
@@ -96,6 +116,13 @@ export function normalizeAdminUserRecord(raw: AdminUserRawRecord) {
     email: toStringOrEmpty(raw.email) || undefined,
     avatar: toStringOrEmpty(raw.avatar) || undefined,
     aiAssistantEnabled: Boolean(raw.aiAssistantEnabled),
+    aiEntitlementType:
+      raw.aiEntitlementType === 'trial' || raw.aiEntitlementType === 'full'
+        ? raw.aiEntitlementType
+        : 'locked',
+    aiTrialAvailable: raw.aiTrialAvailable !== false,
+    aiTrialStartedAt: toStringOrEmpty(raw.aiTrialStartedAt) || undefined,
+    aiTrialConsumedAt: toStringOrEmpty(raw.aiTrialConsumedAt) || undefined,
     createdAt: toStringOrEmpty(raw.createdAt) || undefined,
     lastLoginAt: toStringOrEmpty(raw.lastLoginAt) || undefined,
   };
@@ -108,6 +135,21 @@ export function userMatchesFilters(
 ) {
   if (filters.aiStatus === 'enabled' && !user.aiAssistantEnabled) return false;
   if (filters.aiStatus === 'disabled' && user.aiAssistantEnabled) return false;
+
+  const effectiveAccessStatus =
+    user.aiAssistantEnabled ? 'full' : user.aiEntitlementType === 'trial' ? 'trial' : 'locked';
+  if (filters.accessStatus !== 'all' && effectiveAccessStatus !== filters.accessStatus) return false;
+
+  if (filters.trialStatus !== 'all') {
+    if (user.aiAssistantEnabled) return false;
+    const effectiveTrialStatus =
+      user.aiEntitlementType === 'trial'
+        ? 'active'
+        : user.aiTrialAvailable
+          ? 'available'
+          : 'blocked';
+    if (effectiveTrialStatus !== filters.trialStatus) return false;
+  }
 
   const query = filters.q.toLowerCase();
   if (query) {

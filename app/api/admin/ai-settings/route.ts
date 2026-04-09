@@ -34,8 +34,14 @@ export async function POST(request: Request) {
   if (typeof body.defaultMonthlyTokenLimit === 'number' && body.defaultMonthlyTokenLimit > 0) {
     update.defaultMonthlyTokenLimit = body.defaultMonthlyTokenLimit;
   }
+  if (typeof body.defaultTrialTokenLimit === 'number' && body.defaultTrialTokenLimit > 0) {
+    update.defaultTrialTokenLimit = body.defaultTrialTokenLimit;
+  }
   if (typeof body.defaultAiHardStop === 'boolean') {
     update.defaultAiHardStop = body.defaultAiHardStop;
+  }
+  if (typeof body.trialEnabled === 'boolean') {
+    update.trialEnabled = body.trialEnabled;
   }
   if (typeof body.openaiReportedTokens === 'number' && body.openaiReportedTokens >= 0) {
     update.openaiReportedTokens = body.openaiReportedTokens;
