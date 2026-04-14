@@ -21,7 +21,7 @@ export default function AccountsPage() {
   const { accounts, isLoading, addAccount, updateAccount, deleteAccount, getTotalBalance } = useAccounts();
   const { formatAmount } = useCurrency();
   const [showForm, setShowForm] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
   const [relatedTransactionsCount, setRelatedTransactionsCount] = useState(0);
@@ -36,7 +36,6 @@ export default function AccountsPage() {
       setDraftAccount({
         name: assistantDraft.name ?? '',
         type: assistantDraft.type ?? 'cash',
-        balance: assistantDraft.balance ?? 0,
         currency: assistantDraft.currency ?? 'BDT',
         icon: assistantDraft.icon ?? '💵',
         color: assistantDraft.color ?? '#10B981',
@@ -59,12 +58,19 @@ export default function AccountsPage() {
   const handleUpdate = async (data: any) => {
     if (!editingAccount) return;
     try {
-      await updateAccount(editingAccount.id, data);
+      await updateAccount(editingAccount.id, {
+        name: data.name,
+        type: data.type,
+        currency: data.currency,
+        color: data.color,
+        icon: data.icon,
+      });
       toast.success('Account updated!');
     } catch (err) {
-      toast.error('Failed to update');
+      toast.error('Failed to update account');
+    } finally {
+      setEditingAccount(null);
     }
-    setEditingAccount(null);
   };
 
   const openDeleteDialog = async (account: Account) => {
@@ -151,7 +157,7 @@ export default function AccountsPage() {
               <motion.div key={acc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <AccountCard
                   account={acc}
-                  onEdit={() => { setEditingAccount(acc); setShowForm(true); }}
+                  onEdit={() => { setDraftAccount(null); setEditingAccount(acc); setShowForm(true); }}
                   onDelete={() => openDeleteDialog(acc)}
                 />
               </motion.div>
@@ -163,7 +169,7 @@ export default function AccountsPage() {
       <AccountForm
         key={editingAccount?.id ?? draftAccount?.name ?? 'new'}
         open={showForm}
-        onClose={() => { setShowForm(false); setEditingAccount(null); setDraftAccount(null); }}
+        onClose={() => { setShowForm(false); setDraftAccount(null); setEditingAccount(null); }}
         onSubmit={editingAccount ? handleUpdate : handleCreate}
         account={editingAccount ?? draftAccount}
       />

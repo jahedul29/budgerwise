@@ -149,22 +149,31 @@ export function useAccounts() {
     return () => window.removeEventListener(SYNC_COMPLETE_EVENT, handleSyncComplete);
   }, [loadAccounts]);
 
-  const addAccount = useCallback(async (data: Omit<Account, 'id' | 'createdAt' | '_syncStatus'>) => {
+  const notifyAccountsChanged = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(SYNC_COMPLETE_EVENT));
+    }
+  }, []);
+
+  const addAccount = useCallback(async (data: Omit<Account, 'id' | 'createdAt' | '_syncStatus' | 'balance'>) => {
     const account: Account = {
       ...data,
+      balance: 0,
       id: generateId(),
       createdAt: new Date(),
       _syncStatus: 'pending_create',
     };
     await localDb.accounts.add(account);
     setAccounts(prev => [...prev, account]);
+    notifyAccountsChanged();
     return account;
-  }, []);
+  }, [notifyAccountsChanged]);
 
   const updateAccount = useCallback(async (id: string, updates: Partial<Account>) => {
     await localDb.accounts.update(id, { ...updates, _syncStatus: 'pending_update' });
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
-  }, []);
+    notifyAccountsChanged();
+  }, [notifyAccountsChanged]);
 
   const deleteAccount = useCallback(async (id: string) => {
     if (isOnline) {
@@ -178,7 +187,8 @@ export function useAccounts() {
       await localDb.accounts.update(id, { _syncStatus: 'pending_delete' });
     }
     setAccounts(prev => prev.filter(a => a.id !== id));
-  }, [isOnline]);
+    notifyAccountsChanged();
+  }, [isOnline, notifyAccountsChanged]);
 
   const updateBalance = useCallback(async (id: string, amount: number) => {
     const account = accounts.find(a => a.id === id);

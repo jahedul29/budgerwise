@@ -1,21 +1,17 @@
 import { z } from 'zod';
 
 export const assistantEntitySchema = z.enum(['transaction', 'account', 'category', 'budget']);
-export const assistantOperationSchema = z.enum(['add', 'update', 'delete']);
+export const assistantOperationSchema = z.enum(['add', 'update']);
 
 export const assistantIntentSchema = z.enum([
   'transaction.add',
   'transaction.update',
-  'transaction.delete',
   'account.add',
   'account.update',
-  'account.delete',
   'category.add',
   'category.update',
-  'category.delete',
   'budget.add',
   'budget.update',
-  'budget.delete',
 ]);
 
 export const assistantDateRefModeSchema = z.enum(['absolute', 'relative']);
@@ -29,7 +25,8 @@ export const assistantTransactionDraftSchema = z.object({
   categoryName: z.string().optional(),
   accountId: z.string().optional(),
   accountName: z.string().optional(),
-  paymentMethod: z.enum(['cash', 'card', 'bank_transfer', 'mobile_banking', 'other']).optional(),
+  transferAccountId: z.string().optional(),
+  transferAccountName: z.string().optional(),
   dateMode: assistantDateRefModeSchema.default('relative').optional(),
   relativeDate: assistantRelativeDateSchema.optional(),
   dateIso: z.string().optional(),
@@ -41,7 +38,6 @@ export const assistantAccountDraftSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
   type: z.enum(['cash', 'mobile_banking', 'bank', 'credit_card', 'loan']).optional(),
-  balance: z.number().optional(),
   currency: z.string().optional(),
   color: z.string().optional(),
   icon: z.string().optional(),

@@ -13,16 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DateTimePicker } from '@/components/transactions/DateTimePicker';
-import type { TransactionType, PaymentMethod } from '@/types';
+import type { TransactionType } from '@/types';
 import toast from 'react-hot-toast';
-
-const paymentMethods: { value: PaymentMethod; label: string; icon: string }[] = [
-  { value: 'cash', label: 'Cash', icon: '💵' },
-  { value: 'card', label: 'Card', icon: '💳' },
-  { value: 'bank_transfer', label: 'Bank', icon: '🏦' },
-  { value: 'mobile_banking', label: 'Mobile', icon: '📱' },
-  { value: 'other', label: 'Other', icon: '💫' },
-];
 
 export function AddTransactionSheet() {
   const {
@@ -36,7 +28,7 @@ export function AddTransactionSheet() {
   const { accounts, updateBalance } = useAccounts();
   const [type, setType] = useState<TransactionType>('expense');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cash');
+  const [selectedTransferAccount, setSelectedTransferAccount] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const touchStartYRef = useRef<number | null>(null);
@@ -49,10 +41,12 @@ export function AddTransactionSheet() {
       notes: '',
       date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       accountId: '',
+      transferAccountId: '',
     },
   });
 
   const dateValue = watch('date');
+  const sourceAccountId = watch('accountId');
   const filteredCategories = getCategoriesByType(type === 'transfer' ? 'expense' : type);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -80,43 +74,63 @@ export function AddTransactionSheet() {
   };
 
   const onSubmit = async (data: any) => {
-    const category = categories.find(c => c.id === selectedCategory);
-    if (!category) {
+    const selectedSourceAccountId = data.accountId || accounts[0]?.id || '';
+    const selectedDestinationAccountId = selectedTransferAccount || data.transferAccountId || '';
+    const category = type === 'transfer' ? null : categories.find(c => c.id === selectedCategory);
+
+    if (type !== 'transfer' && !category) {
       toast.error('Please select a category');
       return;
     }
-    if (!data.accountId && accounts.length > 0) {
-      data.accountId = accounts[0].id;
+    if (!selectedSourceAccountId) {
+      toast.error('Please select an account');
+      return;
+    }
+    if (type === 'transfer') {
+      if (!selectedDestinationAccountId) {
+        toast.error('Please select a destination account');
+        return;
+      }
+      if (selectedDestinationAccountId === selectedSourceAccountId) {
+        toast.error('Source and destination accounts must be different');
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
+      const destinationAccount = accounts.find((acc) => acc.id === selectedDestinationAccountId);
       await addTransaction({
         amount: parseFloat(data.amount),
         type,
-        categoryId: category.id,
-        categoryName: category.name,
-        categoryIcon: category.icon,
-        categoryColor: category.color,
-        accountId: data.accountId || accounts[0]?.id || '',
+        categoryId: type === 'transfer' ? 'transfer' : category!.id,
+        categoryName: type === 'transfer' ? 'Transfer' : category!.name,
+        categoryIcon: type === 'transfer' ? '↔️' : category!.icon,
+        categoryColor: type === 'transfer' ? '#118AB2' : category!.color,
+        accountId: selectedSourceAccountId,
+        transferAccountId: type === 'transfer' ? selectedDestinationAccountId : undefined,
+        transferAccountName: type === 'transfer' ? destinationAccount?.name ?? '' : undefined,
         description: data.description,
         notes: data.notes || undefined,
         date: new Date(data.date),
-        paymentMethod: selectedPayment,
         tags: [],
         isRecurring: false,
       });
 
       const amount = parseFloat(data.amount);
       if (type === 'expense') {
-        await updateBalance(data.accountId || accounts[0]?.id, -amount);
+        await updateBalance(selectedSourceAccountId, -amount);
       } else if (type === 'income') {
-        await updateBalance(data.accountId || accounts[0]?.id, amount);
+        await updateBalance(selectedSourceAccountId, amount);
+      } else {
+        await updateBalance(selectedSourceAccountId, -amount);
+        await updateBalance(selectedDestinationAccountId, amount);
       }
 
       toast.success('Transaction added!');
       reset();
       setSelectedCategory('');
+      setSelectedTransferAccount('');
       clearAssistantTransactionDraft();
       setShowAddTransaction(false);
     } catch (error) {
@@ -144,14 +158,15 @@ export function AddTransactionSheet() {
     if (assistantTransactionDraft.accountId) {
       setValue('accountId', assistantTransactionDraft.accountId);
     }
+    if (assistantTransactionDraft.transferAccountId) {
+      setValue('transferAccountId', assistantTransactionDraft.transferAccountId);
+      setSelectedTransferAccount(assistantTransactionDraft.transferAccountId);
+    }
     if (assistantTransactionDraft.type) {
       setType(assistantTransactionDraft.type);
     }
     if (assistantTransactionDraft.categoryId) {
       setSelectedCategory(assistantTransactionDraft.categoryId);
-    }
-    if (assistantTransactionDraft.paymentMethod) {
-      setSelectedPayment(assistantTransactionDraft.paymentMethod);
     }
   }, [assistantTransactionDraft, setValue, showAddTransaction]);
 
@@ -188,8 +203,8 @@ export function AddTransactionSheet() {
               <div className="h-1.5 w-12 rounded-full bg-navy-200 dark:bg-navy-600" />
             </div>
 
-            <div className="px-5 pb-8 safe-area-bottom safe-area-bottom-xl lg:px-6">
-              <div className="mb-5 flex items-center justify-between">
+            <div className="px-5 pt-0 lg:pt-4 safe-area-bottom safe-area-bottom-xl lg:px-6">
+              <div className="sticky top-[2.125rem] z-10 -mx-5 mb-5 flex items-center justify-between bg-white/90 px-5 py-3 backdrop-blur-xl dark:bg-surface-elevated/90 lg:top-0 lg:-mx-6 lg:px-6">
                 <h2 className="text-lg font-display font-bold text-navy-900 dark:text-navy-50">Add Transaction</h2>
                 <div className="flex items-center gap-2">
                   <button
@@ -233,7 +248,14 @@ export function AddTransactionSheet() {
                     <button
                       key={t}
                       type="button"
-                      onClick={() => { setType(t); setSelectedCategory(''); }}
+                      onClick={() => {
+                        setType(t);
+                        setSelectedCategory('');
+                        if (t !== 'transfer') {
+                          setSelectedTransferAccount('');
+                          setValue('transferAccountId', '');
+                        }
+                      }}
                       className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
                         type === t
                           ? t === 'expense'
@@ -249,31 +271,38 @@ export function AddTransactionSheet() {
                   ))}
                 </div>
 
-                {/* Category Picker */}
-                <div>
-                  <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">Category</Label>
-                  <div className="grid grid-cols-4 gap-2 p-1 -m-1 max-h-32 overflow-y-auto scrollbar-hide">
-                    {filteredCategories.map(cat => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setSelectedCategory(cat.id)}
-                        className={`flex flex-col items-center gap-1 rounded-xl border-2 border-transparent p-2.5 text-xs font-medium transition-all ${
-                          selectedCategory === cat.id
-                            ? 'border-2 border-primary-500 bg-primary-50 shadow-sm dark:border-primary-400 dark:bg-primary-500/10'
-                            : 'bg-surface-light dark:bg-white/[0.03] hover:bg-navy-50 dark:hover:bg-white/[0.06]'
-                        }`}
-                      >
-                        <span className="text-xl">{cat.icon}</span>
-                        <span className="truncate w-full text-center text-navy-600 dark:text-navy-200">{cat.name}</span>
-                      </button>
-                    ))}
+                {type === 'transfer' ? (
+                  <div className="rounded-2xl border border-primary-200/70 bg-primary-50/80 px-4 py-3 text-sm text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300">
+                    Transfers move money between your own accounts, so no expense or income category is needed.
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">Category</Label>
+                    <div className="grid grid-cols-4 gap-2 p-1 -m-1 max-h-32 overflow-y-auto scrollbar-hide">
+                      {filteredCategories.map(cat => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className={`flex flex-col items-center gap-1 rounded-xl border-2 border-transparent p-2.5 text-xs font-medium transition-all ${
+                            selectedCategory === cat.id
+                              ? 'border-2 border-primary-500 bg-primary-50 shadow-sm dark:border-primary-400 dark:bg-primary-500/10'
+                              : 'bg-surface-light dark:bg-white/[0.03] hover:bg-navy-50 dark:hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span className="text-xl">{cat.icon}</span>
+                          <span className="truncate w-full text-center text-navy-600 dark:text-navy-200">{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                {/* Account */}
+                {/* Source Account */}
                 <div>
-                  <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">Account</Label>
+                  <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">
+                    {type === 'transfer' ? 'From Account' : 'Account'}
+                  </Label>
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide">
                     {accounts.map(acc => (
                       <label
@@ -288,33 +317,41 @@ export function AddTransactionSheet() {
                   </div>
                 </div>
 
+                {type === 'transfer' && (
+                  <div>
+                    <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">To Account</Label>
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                      {accounts.map(acc => {
+                        const disabled = (sourceAccountId || accounts[0]?.id) === acc.id;
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => {
+                              setSelectedTransferAccount(acc.id);
+                              setValue('transferAccountId', acc.id);
+                            }}
+                            className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${
+                              selectedTransferAccount === acc.id
+                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                                : 'border-gray-200/60 dark:border-white/[0.06] bg-transparent hover:bg-navy-50 dark:hover:bg-white/[0.03]'
+                            } ${disabled ? 'cursor-not-allowed opacity-45' : ''}`}
+                          >
+                            <span>{acc.icon}</span>
+                            <span className="text-navy-700 dark:text-navy-100">{acc.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Date & Time */}
                 <DateTimePicker
                   value={dateValue}
                   onChange={(v) => setValue('date', v)}
                 />
-
-                {/* Payment Method */}
-                <div>
-                  <Label className="text-xs font-medium text-navy-400 dark:text-navy-300 mb-2 block">Payment Method</Label>
-                  <div className="flex gap-2">
-                    {paymentMethods.map(pm => (
-                      <button
-                        key={pm.value}
-                        type="button"
-                        onClick={() => setSelectedPayment(pm.value)}
-                        className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${
-                          selectedPayment === pm.value
-                            ? 'bg-primary-50 ring-2 ring-primary-500 dark:bg-primary-500/10 dark:ring-primary-400'
-                            : 'bg-surface-light dark:bg-white/[0.03] hover:bg-navy-50 dark:hover:bg-white/[0.06]'
-                        }`}
-                      >
-                        <span className="text-lg">{pm.icon}</span>
-                        <span className="text-navy-600 dark:text-navy-200">{pm.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
                 {/* Description */}
                 <div>

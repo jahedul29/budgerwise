@@ -1,6 +1,6 @@
 'use client';
 import { motion } from 'framer-motion';
-import { Trash2, Edit } from 'lucide-react';
+import { Edit, Trash2 } from 'lucide-react';
 import { formatAmount } from '@/lib/currency';
 import type { Account } from '@/types';
 

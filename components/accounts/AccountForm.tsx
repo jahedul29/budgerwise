@@ -29,7 +29,6 @@ export function AccountForm({ open, onClose, onSubmit, account }: AccountFormPro
     defaultValues: {
       name: account?.name || '',
       type: account?.type || 'cash',
-      balance: account?.balance || 0,
       currency: account?.currency || 'BDT',
       color: account?.color || '#10B981',
       icon: account?.icon || '💵',
@@ -41,7 +40,7 @@ export function AccountForm({ open, onClose, onSubmit, account }: AccountFormPro
   const selectedIcon = watch('icon');
 
   const handleFormSubmit = (data: any) => {
-    onSubmit({ ...data, balance: parseFloat(data.balance) });
+    onSubmit(data);
     onClose();
   };
 
@@ -50,7 +49,9 @@ export function AccountForm({ open, onClose, onSubmit, account }: AccountFormPro
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{account ? 'Edit Account' : 'Add Account'}</DialogTitle>
-          <DialogDescription>Manage your financial accounts</DialogDescription>
+          <DialogDescription>
+            {account ? 'Update account details' : 'Create a new financial account'}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
@@ -79,11 +80,6 @@ export function AccountForm({ open, onClose, onSubmit, account }: AccountFormPro
                 </button>
               ))}
             </div>
-          </div>
-
-          <div>
-            <Label className="text-xs text-gray-500 mb-1 block">Initial Balance</Label>
-            <Input type="number" step="0.01" {...register('balance')} />
           </div>
 
           <div>

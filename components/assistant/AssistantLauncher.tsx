@@ -26,6 +26,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useCategories } from '@/hooks/useCategories';
 import { useTransactions } from '@/hooks/useTransactions';
+import { MonthPicker } from '@/components/shared/MonthPicker';
 import { useUIStore } from '@/store/uiStore';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { AssistantParseResult } from '@/lib/assistant/schemas';
@@ -131,13 +132,34 @@ function getOperationLabel(op: string) {
   switch (op) {
     case 'add': return 'Create';
     case 'update': return 'Update';
-    case 'delete': return 'Delete';
     default: return op;
   }
 }
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function humanizeFieldKey(key: string) {
+  const raw = key.split('.').pop() ?? key;
+  switch (raw) {
+    case 'categoryId': return 'category';
+    case 'accountId': return 'account';
+    case 'transferAccountId': return 'destination account';
+    case 'dateIso': return 'date';
+    case 'alertThreshold': return 'alert threshold';
+    default:
+      return raw.replace(/([A-Z])/g, ' $1').toLowerCase();
+  }
+}
+
+function formatMonth(value: string | undefined) {
+  if (!value) return 'Not set';
+  const [year, month] = value.split('-');
+  if (!year || !month) return value;
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 /* ─── Styled Select ─── */
@@ -328,7 +350,7 @@ export function AssistantLauncher() {
   }, [open, accessState?.enabled]);
 
   const { accounts } = useAccounts();
-  const { categories } = useCategories();
+  const { categories, getCategoriesByType } = useCategories();
   const { budgets } = useBudgets();
   const { transactions } = useTransactions();
   const {
@@ -355,6 +377,12 @@ export function AssistantLauncher() {
     const c = categories.find((cat) => cat.id === id);
     return c ? `${c.icon} ${c.name}` : id;
   }, [categories]);
+
+  const transactionCategoryOptions = useMemo(() => {
+    const type = parseResult?.fields.transaction?.type;
+    if (!type) return categories;
+    return getCategoriesByType(type === 'transfer' ? 'expense' : type);
+  }, [categories, getCategoriesByType, parseResult?.fields.transaction?.type]);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -458,13 +486,19 @@ export function AssistantLauncher() {
         // transaction.add → open the transaction form directly
         if (result.intent === 'transaction.add' && result.fields.transaction) {
           const tx = result.fields.transaction;
-          if (tx.amount && tx.type && tx.accountId && tx.categoryId && tx.description) {
+          const hasReadyDraft =
+            tx.amount &&
+            tx.type &&
+            tx.accountId &&
+            tx.description &&
+            (tx.type === 'transfer' ? tx.transferAccountId : tx.categoryId);
+          if (hasReadyDraft) {
             setAssistantTransactionDraft({
               amount: tx.amount,
               type: tx.type,
               accountId: tx.accountId,
+              transferAccountId: tx.transferAccountId,
               categoryId: tx.categoryId,
-              paymentMethod: tx.paymentMethod ?? 'cash',
               dateIso: tx.dateIso ?? new Date().toISOString(),
               description: tx.description,
               notes: tx.notes,
@@ -501,7 +535,6 @@ export function AssistantLauncher() {
           setAssistantAccountDraft({
             name: acc.name,
             type: acc.type,
-            balance: acc.balance,
             currency: acc.currency,
             icon: acc.icon,
             color: acc.color,
@@ -548,6 +581,7 @@ export function AssistantLauncher() {
     if (!parseResult) return;
     const next = structuredClone(parseResult) as AssistantParseResult;
     if (key === 'transaction.accountId' && next.fields.transaction) next.fields.transaction.accountId = id;
+    if (key === 'transaction.transferAccountId' && next.fields.transaction) next.fields.transaction.transferAccountId = id;
     if (key === 'transaction.categoryId' && next.fields.transaction) next.fields.transaction.categoryId = id;
     if (key === 'budget.categoryId' && next.fields.budget) next.fields.budget.categoryId = id;
 
@@ -566,9 +600,9 @@ export function AssistantLauncher() {
     if (field === 'description') tx.description = value;
     if (field === 'notes') tx.notes = value;
     if (field === 'type') tx.type = value as typeof tx.type;
-    if (field === 'paymentMethod') tx.paymentMethod = value as typeof tx.paymentMethod;
     if (field === 'dateIso') tx.dateIso = datetimeLocalToIso(value);
     if (field === 'accountId') tx.accountId = value;
+    if (field === 'transferAccountId') tx.transferAccountId = value;
     if (field === 'categoryId') tx.categoryId = value;
 
     const requiredKey = `transaction.${field}`;
@@ -592,7 +626,7 @@ export function AssistantLauncher() {
     const target = next.fields[entity];
     if (!target) return;
 
-    const numericFields = new Set(['amount', 'balance', 'alertThreshold']);
+    const numericFields = new Set(['amount', 'alertThreshold']);
     (target as Record<string, unknown>)[field] = numericFields.has(field) ? Number(value) : value;
 
     const requiredKey = `${entity}.${field}`;
@@ -609,7 +643,9 @@ export function AssistantLauncher() {
   const openTransactionDraftInForm = useCallback(() => {
     if (!parseResult?.fields.transaction) return;
     const tx = parseResult.fields.transaction;
-    if (!tx.amount || !tx.type || !tx.accountId || !tx.categoryId || !tx.description) {
+    const hasTransferTarget = tx.type === 'transfer' ? Boolean(tx.transferAccountId) : true;
+    const hasCategory = tx.type === 'transfer' ? true : Boolean(tx.categoryId);
+    if (!tx.amount || !tx.type || !tx.accountId || !hasTransferTarget || !hasCategory || !tx.description) {
       toast.error('Please resolve required fields first');
       return;
     }
@@ -618,8 +654,8 @@ export function AssistantLauncher() {
       amount: tx.amount,
       type: tx.type,
       accountId: tx.accountId,
+      transferAccountId: tx.transferAccountId,
       categoryId: tx.categoryId,
-      paymentMethod: tx.paymentMethod ?? 'cash',
       dateIso: tx.dateIso ?? new Date().toISOString(),
       description: tx.description,
       notes: tx.notes,
@@ -673,7 +709,6 @@ export function AssistantLauncher() {
     }
   }, [parseResult, requiresResolution, openTransactionDraftInForm, syncNow]);
 
-  const isDelete = parseResult?.operation === 'delete';
   const confidenceColor = (parseResult?.confidence ?? 0) >= 0.8
     ? 'text-income dark:text-income'
     : (parseResult?.confidence ?? 0) >= 0.5
@@ -709,13 +744,28 @@ export function AssistantLauncher() {
           </motion.div>
         );
       case 'categoryId':
+        if (tx?.type === 'transfer') return null;
         return (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="pt-1 pb-0.5">
               <StyledSelect value={tx?.categoryId ?? ''} onChange={(v) => { updateTransactionField('categoryId', v); handleDone(); }} placeholder="Select category">
-                {categories.map((c) => (
+                {transactionCategoryOptions.map((c) => (
                   <option key={c.id} value={c.id} className="bg-surface-card text-navy-100">{c.icon} {c.name}</option>
                 ))}
+              </StyledSelect>
+            </div>
+          </motion.div>
+        );
+      case 'transferAccountId':
+        return (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="pt-1 pb-0.5">
+              <StyledSelect value={tx?.transferAccountId ?? ''} onChange={(v) => { updateTransactionField('transferAccountId', v); handleDone(); }} placeholder="Select destination account">
+                {accounts
+                  .filter((a) => a.id !== tx?.accountId)
+                  .map((a) => (
+                    <option key={a.id} value={a.id} className="bg-surface-card text-navy-100">{a.icon} {a.name}</option>
+                  ))}
               </StyledSelect>
             </div>
           </motion.div>
@@ -728,20 +778,6 @@ export function AssistantLauncher() {
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id} className="bg-surface-card text-navy-100">{a.icon} {a.name}</option>
                 ))}
-              </StyledSelect>
-            </div>
-          </motion.div>
-        );
-      case 'paymentMethod':
-        return (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="pt-1 pb-0.5">
-              <StyledSelect value={tx?.paymentMethod ?? ''} onChange={(v) => { updateTransactionField('paymentMethod', v); handleDone(); }} placeholder="Payment method">
-                <option value="cash" className="bg-surface-card text-navy-100">Cash</option>
-                <option value="card" className="bg-surface-card text-navy-100">Card</option>
-                <option value="bank_transfer" className="bg-surface-card text-navy-100">Bank transfer</option>
-                <option value="mobile_banking" className="bg-surface-card text-navy-100">Mobile banking</option>
-                <option value="other" className="bg-surface-card text-navy-100">Other</option>
               </StyledSelect>
             </div>
           </motion.div>
@@ -769,17 +805,6 @@ export function AssistantLauncher() {
         );
       default:
         return null;
-    }
-  };
-
-  const paymentMethodLabel = (pm: string | undefined) => {
-    switch (pm) {
-      case 'cash': return 'Cash';
-      case 'card': return 'Card';
-      case 'bank_transfer': return 'Bank transfer';
-      case 'mobile_banking': return 'Mobile banking';
-      case 'other': return 'Other';
-      default: return pm ?? 'Not set';
     }
   };
 
@@ -1333,9 +1358,7 @@ export function AssistantLauncher() {
                       >
                         <div className="flex items-center gap-2">
                           <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold ${
-                            isDelete
-                              ? 'bg-expense/10 text-expense dark:bg-expense/15 dark:text-expense'
-                              : 'bg-primary-500/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400'
+                            'bg-primary-500/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400'
                           }`}>
                             {getEntityIcon(parseResult.entity)}
                             {getOperationLabel(parseResult.operation)} {parseResult.entity}
@@ -1421,33 +1444,33 @@ export function AssistantLauncher() {
                           <div className="px-4 py-2 divide-y divide-gray-100/80 dark:divide-white/[0.03]">
                             <div>
                               <ConfirmRow
-                                label="Category"
-                                value={categoryName(parseResult.fields.transaction.categoryId)}
-                                icon={<Tag className="h-3.5 w-3.5" />}
-                                missing={!parseResult.fields.transaction.categoryId}
-                                onEdit={() => setEditingField(editingField === 'categoryId' ? null : 'categoryId')}
+                                label={parseResult.fields.transaction.type === 'transfer' ? 'To' : 'Category'}
+                                value={
+                                  parseResult.fields.transaction.type === 'transfer'
+                                    ? accountName(parseResult.fields.transaction.transferAccountId)
+                                    : categoryName(parseResult.fields.transaction.categoryId)
+                                }
+                                icon={parseResult.fields.transaction.type === 'transfer' ? <ArrowRight className="h-3.5 w-3.5" /> : <Tag className="h-3.5 w-3.5" />}
+                                missing={parseResult.fields.transaction.type === 'transfer'
+                                  ? !parseResult.fields.transaction.transferAccountId
+                                  : !parseResult.fields.transaction.categoryId}
+                                onEdit={() => setEditingField(
+                                  editingField === (parseResult.fields.transaction?.type === 'transfer' ? 'transferAccountId' : 'categoryId')
+                                    ? null
+                                    : (parseResult.fields.transaction?.type === 'transfer' ? 'transferAccountId' : 'categoryId'),
+                                )}
                               />
-                              <AnimatePresence>{renderInlineEdit('categoryId')}</AnimatePresence>
+                              <AnimatePresence>{renderInlineEdit(parseResult.fields.transaction.type === 'transfer' ? 'transferAccountId' : 'categoryId')}</AnimatePresence>
                             </div>
                             <div>
                               <ConfirmRow
-                                label="Account"
+                                label={parseResult.fields.transaction.type === 'transfer' ? 'From' : 'Account'}
                                 value={accountName(parseResult.fields.transaction.accountId)}
                                 icon={<Wallet className="h-3.5 w-3.5" />}
                                 missing={!parseResult.fields.transaction.accountId}
                                 onEdit={() => setEditingField(editingField === 'accountId' ? null : 'accountId')}
                               />
                               <AnimatePresence>{renderInlineEdit('accountId')}</AnimatePresence>
-                            </div>
-                            <div>
-                              <ConfirmRow
-                                label="Payment"
-                                value={paymentMethodLabel(parseResult.fields.transaction.paymentMethod)}
-                                icon={<CreditCard className="h-3.5 w-3.5" />}
-                                missing={!parseResult.fields.transaction.paymentMethod}
-                                onEdit={() => setEditingField(editingField === 'paymentMethod' ? null : 'paymentMethod')}
-                              />
-                              <AnimatePresence>{renderInlineEdit('paymentMethod')}</AnimatePresence>
                             </div>
                             <div>
                               <ConfirmRow
@@ -1512,31 +1535,6 @@ export function AssistantLauncher() {
                         </motion.div>
                       )}
 
-                      {/* ─── Transaction Delete ─── */}
-                      {parseResult.intent === 'transaction.delete' && (
-                        <motion.div
-                          className="rounded-2xl border border-white/[0.06] bg-white/50 dark:bg-white/[0.02] p-4 space-y-2.5"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.12 }}
-                        >
-                          <div className="flex items-start gap-2 rounded-xl bg-expense/[0.06] border border-expense/20 p-3">
-                            <AlertTriangle className="h-4 w-4 text-expense mt-0.5 shrink-0" />
-                            <div>
-                              <p className="text-xs font-semibold text-expense">Permanent deletion</p>
-                              <p className="text-[11px] text-expense/80 mt-0.5">
-                                This will remove the transaction and adjust account balance.
-                              </p>
-                            </div>
-                          </div>
-                          <StyledInput
-                            value={parseResult.fields.transaction?.id ?? ''}
-                            onChange={(v) => updateEntityField('transaction', 'id', v)}
-                            placeholder="Transaction ID"
-                          />
-                        </motion.div>
-                      )}
-
                       {/* ─── Account CRUD ─── */}
                       {parseResult.intent.startsWith('account.') && parseResult.fields.account && (
                         <motion.div
@@ -1545,37 +1543,65 @@ export function AssistantLauncher() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.12 }}
                         >
-                          {parseResult.intent.endsWith('.delete') && (
-                            <div className="flex items-start gap-2 rounded-xl bg-expense/[0.06] border border-expense/20 p-3">
-                              <AlertTriangle className="h-4 w-4 text-expense mt-0.5 shrink-0" />
-                              <p className="text-xs text-expense">This will permanently delete the account.</p>
-                            </div>
-                          )}
-                          <StyledInput
-                            value={parseResult.fields.account.id ?? ''}
-                            onChange={(v) => updateEntityField('account', 'id', v)}
-                            placeholder="Account ID (required for update/delete)"
-                          />
-                          {!parseResult.intent.endsWith('.delete') && (
-                            <>
-                              <StyledInput
-                                value={parseResult.fields.account.name ?? ''}
-                                onChange={(v) => updateEntityField('account', 'name', v)}
-                                placeholder="Account name"
-                              />
-                              <StyledSelect
-                                value={parseResult.fields.account.type ?? ''}
-                                onChange={(v) => updateEntityField('account', 'type', v)}
-                                placeholder="Select type"
-                              >
-                                <option value="cash" className="bg-surface-card text-navy-100">Cash</option>
-                                <option value="mobile_banking" className="bg-surface-card text-navy-100">Mobile banking</option>
-                                <option value="bank" className="bg-surface-card text-navy-100">Bank</option>
-                                <option value="credit_card" className="bg-surface-card text-navy-100">Credit card</option>
-                                <option value="loan" className="bg-surface-card text-navy-100">Loan</option>
-                              </StyledSelect>
-                            </>
-                          )}
+                          <div className="space-y-2 divide-y divide-gray-100/80 dark:divide-white/[0.03]">
+                            {parseResult.intent === 'account.update' && (
+                              <div className="pb-2">
+                                <p className="mb-2 text-[11px] uppercase tracking-wider text-navy-400 dark:text-navy-400">
+                                  Account to update
+                                </p>
+                                <StyledSelect
+                                  value={parseResult.fields.account.id ?? ''}
+                                  onChange={(v) => updateEntityField('account', 'id', v)}
+                                  placeholder="Select account"
+                                >
+                                  {accounts.map((account) => (
+                                    <option key={account.id} value={account.id} className="bg-surface-card text-navy-100">
+                                      {account.icon} {account.name}
+                                    </option>
+                                  ))}
+                                </StyledSelect>
+                              </div>
+                            )}
+                            <ConfirmRow
+                              label="Name"
+                              value={parseResult.fields.account.name ?? 'Not set'}
+                              icon={<Wallet className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.account.name}
+                            />
+                            <StyledInput
+                              value={parseResult.fields.account.name ?? ''}
+                              onChange={(v) => updateEntityField('account', 'name', v)}
+                              placeholder="Account name"
+                            />
+                            <ConfirmRow
+                              label="Type"
+                              value={parseResult.fields.account.type ? capitalize(parseResult.fields.account.type.replace('_', ' ')) : 'Not set'}
+                              icon={<Tag className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.account.type}
+                            />
+                            <StyledSelect
+                              value={parseResult.fields.account.type ?? ''}
+                              onChange={(v) => updateEntityField('account', 'type', v)}
+                              placeholder="Select type"
+                            >
+                              <option value="cash" className="bg-surface-card text-navy-100">Cash</option>
+                              <option value="mobile_banking" className="bg-surface-card text-navy-100">Mobile banking</option>
+                              <option value="bank" className="bg-surface-card text-navy-100">Bank</option>
+                              <option value="credit_card" className="bg-surface-card text-navy-100">Credit card</option>
+                              <option value="loan" className="bg-surface-card text-navy-100">Loan</option>
+                            </StyledSelect>
+                            <ConfirmRow
+                              label="Currency"
+                              value={parseResult.fields.account.currency ?? 'BDT'}
+                              icon={<CreditCard className="h-3.5 w-3.5" />}
+                              missing={false}
+                            />
+                            <StyledInput
+                              value={parseResult.fields.account.currency ?? ''}
+                              onChange={(v) => updateEntityField('account', 'currency', v)}
+                              placeholder="Currency"
+                            />
+                          </div>
                         </motion.div>
                       )}
 
@@ -1587,34 +1613,51 @@ export function AssistantLauncher() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.12 }}
                         >
-                          {parseResult.intent.endsWith('.delete') && (
-                            <div className="flex items-start gap-2 rounded-xl bg-expense/[0.06] border border-expense/20 p-3">
-                              <AlertTriangle className="h-4 w-4 text-expense mt-0.5 shrink-0" />
-                              <p className="text-xs text-expense">This will permanently delete the category.</p>
-                            </div>
-                          )}
-                          <StyledInput
-                            value={parseResult.fields.category.id ?? ''}
-                            onChange={(v) => updateEntityField('category', 'id', v)}
-                            placeholder="Category ID (required for update/delete)"
-                          />
-                          {!parseResult.intent.endsWith('.delete') && (
-                            <>
-                              <StyledInput
-                                value={parseResult.fields.category.name ?? ''}
-                                onChange={(v) => updateEntityField('category', 'name', v)}
-                                placeholder="Category name"
-                              />
-                              <StyledSelect
-                                value={parseResult.fields.category.type ?? ''}
-                                onChange={(v) => updateEntityField('category', 'type', v)}
-                                placeholder="Select type"
-                              >
-                                <option value="expense" className="bg-surface-card text-navy-100">Expense</option>
-                                <option value="income" className="bg-surface-card text-navy-100">Income</option>
-                              </StyledSelect>
-                            </>
-                          )}
+                          <div className="space-y-2 divide-y divide-gray-100/80 dark:divide-white/[0.03]">
+                            {parseResult.intent === 'category.update' && (
+                              <div className="pb-2">
+                                <p className="mb-2 text-[11px] uppercase tracking-wider text-navy-400 dark:text-navy-400">
+                                  Category to update
+                                </p>
+                                <StyledSelect
+                                  value={parseResult.fields.category.id ?? ''}
+                                  onChange={(v) => updateEntityField('category', 'id', v)}
+                                  placeholder="Select category"
+                                >
+                                  {categories.map((category) => (
+                                    <option key={category.id} value={category.id} className="bg-surface-card text-navy-100">
+                                      {category.icon} {category.name}
+                                    </option>
+                                  ))}
+                                </StyledSelect>
+                              </div>
+                            )}
+                            <ConfirmRow
+                              label="Name"
+                              value={parseResult.fields.category.name ?? 'Not set'}
+                              icon={<Tag className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.category.name}
+                            />
+                            <StyledInput
+                              value={parseResult.fields.category.name ?? ''}
+                              onChange={(v) => updateEntityField('category', 'name', v)}
+                              placeholder="Category name"
+                            />
+                            <ConfirmRow
+                              label="Type"
+                              value={parseResult.fields.category.type ? capitalize(parseResult.fields.category.type) : 'Not set'}
+                              icon={<Zap className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.category.type}
+                            />
+                            <StyledSelect
+                              value={parseResult.fields.category.type ?? ''}
+                              onChange={(v) => updateEntityField('category', 'type', v)}
+                              placeholder="Select type"
+                            >
+                              <option value="expense" className="bg-surface-card text-navy-100">Expense</option>
+                              <option value="income" className="bg-surface-card text-navy-100">Income</option>
+                            </StyledSelect>
+                          </div>
                         </motion.div>
                       )}
 
@@ -1626,32 +1669,80 @@ export function AssistantLauncher() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.12 }}
                         >
-                          {parseResult.intent.endsWith('.delete') && (
-                            <div className="flex items-start gap-2 rounded-xl bg-expense/[0.06] border border-expense/20 p-3">
-                              <AlertTriangle className="h-4 w-4 text-expense mt-0.5 shrink-0" />
-                              <p className="text-xs text-expense">This will permanently delete the budget.</p>
-                            </div>
-                          )}
-                          <StyledInput
-                            value={parseResult.fields.budget.id ?? ''}
-                            onChange={(v) => updateEntityField('budget', 'id', v)}
-                            placeholder="Budget ID (required for update/delete)"
-                          />
-                          {!parseResult.intent.endsWith('.delete') && (
-                            <>
-                              <StyledInput
-                                value={String(parseResult.fields.budget.amount ?? '')}
-                                onChange={(v) => updateEntityField('budget', 'amount', v)}
-                                placeholder="Budget amount"
-                                type="number"
-                              />
-                              <StyledInput
-                                value={parseResult.fields.budget.month ?? ''}
-                                onChange={(v) => updateEntityField('budget', 'month', v)}
-                                placeholder="Month (YYYY-MM)"
-                              />
-                            </>
-                          )}
+                          <div className="space-y-2 divide-y divide-gray-100/80 dark:divide-white/[0.03]">
+                            {parseResult.intent === 'budget.update' && (
+                              <div className="pb-2">
+                                <p className="mb-2 text-[11px] uppercase tracking-wider text-navy-400 dark:text-navy-400">
+                                  Budget to update
+                                </p>
+                                <StyledSelect
+                                  value={parseResult.fields.budget.id ?? ''}
+                                  onChange={(v) => updateEntityField('budget', 'id', v)}
+                                  placeholder="Select budget"
+                                >
+                                  {budgets.map((budget) => (
+                                    <option key={budget.id} value={budget.id} className="bg-surface-card text-navy-100">
+                                      {budget.categoryName} • {formatMonth(budget.month)}
+                                    </option>
+                                  ))}
+                                </StyledSelect>
+                              </div>
+                            )}
+                            <ConfirmRow
+                              label="Category"
+                              value={categoryName(parseResult.fields.budget.categoryId)}
+                              icon={<Tag className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.budget.categoryId}
+                            />
+                            <StyledSelect
+                              value={parseResult.fields.budget.categoryId ?? ''}
+                              onChange={(v) => updateEntityField('budget', 'categoryId', v)}
+                              placeholder="Select category"
+                            >
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id} className="bg-surface-card text-navy-100">
+                                  {category.icon} {category.name}
+                                </option>
+                              ))}
+                            </StyledSelect>
+                            <ConfirmRow
+                              label="Amount"
+                              value={parseResult.fields.budget.amount ? parseResult.fields.budget.amount.toLocaleString() : 'Not set'}
+                              icon={<PiggyBank className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.budget.amount}
+                            />
+                            <StyledInput
+                              value={String(parseResult.fields.budget.amount ?? '')}
+                              onChange={(v) => updateEntityField('budget', 'amount', v)}
+                              placeholder="Budget amount"
+                              type="number"
+                            />
+                            <ConfirmRow
+                              label="Period"
+                              value={parseResult.fields.budget.period ? capitalize(parseResult.fields.budget.period) : 'Monthly'}
+                              icon={<Calendar className="h-3.5 w-3.5" />}
+                              missing={false}
+                            />
+                            <StyledSelect
+                              value={parseResult.fields.budget.period ?? ''}
+                              onChange={(v) => updateEntityField('budget', 'period', v)}
+                              placeholder="Select period"
+                            >
+                              <option value="monthly" className="bg-surface-card text-navy-100">Monthly</option>
+                              <option value="weekly" className="bg-surface-card text-navy-100">Weekly</option>
+                              <option value="yearly" className="bg-surface-card text-navy-100">Yearly</option>
+                            </StyledSelect>
+                            <ConfirmRow
+                              label="Month"
+                              value={formatMonth(parseResult.fields.budget.month)}
+                              icon={<Calendar className="h-3.5 w-3.5" />}
+                              missing={!parseResult.fields.budget.month}
+                            />
+                            <MonthPicker
+                              value={parseResult.fields.budget.month ?? ''}
+                              onChange={(v) => updateEntityField('budget', 'month', v)}
+                            />
+                          </div>
                         </motion.div>
                       )}
 
@@ -1665,7 +1756,7 @@ export function AssistantLauncher() {
                         >
                           <AlertTriangle className="h-3 w-3 text-warning shrink-0" />
                           <p className="text-[11px] text-warning-dark dark:text-warning">
-                            Missing: {parseResult.missingFields.map((f) => f.split('.').pop()).join(', ')}
+                            Missing: {parseResult.missingFields.map(humanizeFieldKey).join(', ')}
                           </p>
                         </motion.div>
                       )}
@@ -1681,12 +1772,8 @@ export function AssistantLauncher() {
                           type="button"
                           onClick={handleExecute}
                           disabled={executing}
-                          className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-50 ${
-                            isDelete
-                              ? 'bg-expense hover:bg-expense-dark shadow-lg shadow-expense/20'
-                              : 'shadow-lg shadow-primary-500/20 hover:shadow-primary-500/30'
-                          }`}
-                          style={!isDelete ? { background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' } : undefined}
+                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-50 shadow-lg shadow-primary-500/20 hover:shadow-primary-500/30"
+                          style={{ background: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)' }}
                         >
                           {executing ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1696,11 +1783,6 @@ export function AssistantLauncher() {
                                 <>
                                   <CheckCircle2 className="h-4 w-4" />
                                   Confirm & Add
-                                </>
-                              ) : isDelete ? (
-                                <>
-                                  <AlertTriangle className="h-4 w-4" />
-                                  Confirm Delete
                                 </>
                               ) : (
                                 <>

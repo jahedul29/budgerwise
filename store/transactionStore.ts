@@ -9,7 +9,6 @@ interface TransactionState {
     categories: string[];
     types: string[];
     accounts: string[];
-    paymentMethods: string[];
     tags: string[];
     amountRange?: { min: number; max: number };
     search: string;
@@ -29,7 +28,6 @@ const defaultFilter = {
   categories: [],
   types: [],
   accounts: [],
-  paymentMethods: [],
   tags: [],
   search: '',
 };
