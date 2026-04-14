@@ -232,7 +232,7 @@ export default function AdminDashboardPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="h-3.5 w-3.5 text-primary-500" />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-navy-400 dark:text-navy-500">
-                  AI Token Usage — {usage.month}
+                  AI Token Usage — {(() => { const [y, m] = usage.month.split('-'); return new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); })()}
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

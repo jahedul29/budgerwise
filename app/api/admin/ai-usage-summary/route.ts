@@ -31,26 +31,32 @@ export async function GET() {
   let totalEnabledUsers = 0;
   let totalUnlimitedUsers = 0;
   let totalAllocatedTokens = 0;
-  const enabledUserIds: string[] = [];
   let totalTrialUsers = 0;
-  let totalTrialTokensUsed = 0;
-  let totalTrialRequests = 0;
+
+  // Collect all user IDs that may have usage, and track trial user-doc totals
+  // as a fallback for users who don't yet have a monthly aggregate doc.
+  const allUserIds: string[] = [];
+  const trialFallback = new Map<string, { tokens: number; requests: number }>();
 
   for (const doc of usersSnap.docs) {
     const data = doc.data();
+
     if (data.aiEntitlementType === 'trial') {
       totalTrialUsers += 1;
-      totalTrialTokensUsed += typeof data.aiTrialTokensUsed === 'number' ? data.aiTrialTokensUsed : 0;
-      totalTrialRequests += typeof data.aiTrialRequestCount === 'number' ? data.aiTrialRequestCount : 0;
       totalAllocatedTokens += typeof data.aiTrialTokenLimit === 'number'
         ? data.aiTrialTokenLimit
         : globalSettings.defaultTrialTokenLimit;
+      allUserIds.push(doc.id);
+      trialFallback.set(doc.id, {
+        tokens: typeof data.aiTrialTokensUsed === 'number' ? data.aiTrialTokensUsed : 0,
+        requests: typeof data.aiTrialRequestCount === 'number' ? data.aiTrialRequestCount : 0,
+      });
       continue;
     }
 
     if (data.aiAssistantEnabled) {
       totalEnabledUsers += 1;
-      enabledUserIds.push(doc.id);
+      allUserIds.push(doc.id);
 
       if (data.aiUnlimited) {
         totalUnlimitedUsers += 1;
@@ -69,8 +75,8 @@ export async function GET() {
   let totalRequests = 0;
   let activeAiUsers = 0;
 
-  if (enabledUserIds.length > 0) {
-    const usagePromises = enabledUserIds.map((userId) =>
+  if (allUserIds.length > 0) {
+    const usagePromises = allUserIds.map((userId) =>
       adminDb!
         .collection('users').doc(userId)
         .collection('aiUsageMonthly').doc(currentMonth)
@@ -78,28 +84,42 @@ export async function GET() {
     );
     const usageDocs = await Promise.all(usagePromises);
 
-    for (const doc of usageDocs) {
-      if (!doc.exists) continue;
-      const data = doc.data()!;
-      totalTokensUsed += (data.totalTokensUsed as number) ?? 0;
-      totalInputTokens += (data.inputTokensUsed as number) ?? 0;
-      totalOutputTokens += (data.outputTokensUsed as number) ?? 0;
-      totalRequests += (data.requestCount as number) ?? 0;
-      activeAiUsers += 1;
+    for (let i = 0; i < usageDocs.length; i++) {
+      const doc = usageDocs[i];
+      const userId = allUserIds[i];
+
+      if (doc.exists) {
+        const data = doc.data()!;
+        totalTokensUsed += (data.totalTokensUsed as number) ?? 0;
+        totalInputTokens += (data.inputTokensUsed as number) ?? 0;
+        totalOutputTokens += (data.outputTokensUsed as number) ?? 0;
+        totalRequests += (data.requestCount as number) ?? 0;
+        activeAiUsers += 1;
+        // Monthly doc found — no need for fallback
+        trialFallback.delete(userId);
+      }
     }
+  }
+
+  // For trial users without a monthly aggregate doc (usage recorded before
+  // the fix), fall back to totals stored on the user document.
+  for (const [, fb] of trialFallback) {
+    totalTokensUsed += fb.tokens;
+    totalRequests += fb.requests;
+    if (fb.requests > 0) activeAiUsers += 1;
   }
 
   return NextResponse.json({
     month: currentMonth,
-    totalTokensUsed: totalTokensUsed + totalTrialTokensUsed,
+    totalTokensUsed,
     totalInputTokens,
     totalOutputTokens,
-    totalRequests: totalRequests + totalTrialRequests,
+    totalRequests,
     totalAllocatedTokens,
     totalEnabledUsers,
     totalTrialUsers,
     totalUnlimitedUsers,
-    activeAiUsers: activeAiUsers + totalTrialUsers,
+    activeAiUsers,
     defaultMonthlyTokenLimit: globalSettings.defaultMonthlyTokenLimit,
     defaultTrialTokenLimit: globalSettings.defaultTrialTokenLimit,
     openaiReportedTokens: globalSettings.openaiReportedMonth === currentMonth

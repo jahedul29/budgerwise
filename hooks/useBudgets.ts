@@ -4,7 +4,7 @@ import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { Budget, BudgetPeriod } from '@/types';
-import { format } from 'date-fns';
+import { getCurrentPeriodKey } from '@/lib/budget-periods';
 
 export function useBudgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -17,7 +17,12 @@ export function useBudgets() {
         .where('_syncStatus')
         .notEqual('pending_delete')
         .toArray();
-      setBudgets(all);
+      // Backfill period for budgets created before multi-period support
+      const normalised = all.map(b => ({
+        ...b,
+        period: b.period || ('monthly' as BudgetPeriod),
+      }));
+      setBudgets(normalised);
     } catch (error) {
       console.error('Failed to load budgets:', error);
     } finally {
@@ -60,9 +65,8 @@ export function useBudgets() {
     setBudgets(prev => prev.filter(b => b.id !== id));
   }, []);
 
-  const getCurrentMonthBudgets = useCallback(() => {
-    const currentMonth = format(new Date(), 'yyyy-MM');
-    return budgets.filter(b => b.month === currentMonth);
+  const getCurrentPeriodBudgets = useCallback(() => {
+    return budgets.filter(b => b.month === getCurrentPeriodKey(b.period));
   }, [budgets]);
 
   return {
@@ -71,7 +75,7 @@ export function useBudgets() {
     addBudget,
     updateBudget,
     deleteBudget,
-    getCurrentMonthBudgets,
+    getCurrentPeriodBudgets,
     reload: loadBudgets,
   };
 }

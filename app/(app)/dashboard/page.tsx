@@ -20,6 +20,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useUIStore } from '@/store/uiStore';
+import { getPeriodRange } from '@/lib/budget-periods';
 import Link from 'next/link';
 import { Wallet } from 'lucide-react';
 import React from 'react';
@@ -39,7 +40,7 @@ const fadeUp = {
 
 export default function DashboardPage() {
   const { transactions, isLoading: txLoading } = useTransactions();
-  const { getCurrentMonthBudgets } = useBudgets();
+  const { getCurrentPeriodBudgets } = useBudgets();
   const { accounts, getTotalBalance } = useAccounts();
   const { categories } = useCategories();
   const { formatAmount } = useCurrency();
@@ -90,14 +91,19 @@ export default function DashboardPage() {
   }, [monthTransactions]);
 
   const budgetData = useMemo(() => {
-    const budgets = getCurrentMonthBudgets();
+    const budgets = getCurrentPeriodBudgets();
     return budgets.map(budget => {
-      const spent = monthTransactions
-        .filter(t => t.type === 'expense' && t.categoryId === budget.categoryId)
+      const { start, end } = getPeriodRange(budget.month, budget.period);
+      const spent = transactions
+        .filter(t => {
+          if (t.type !== 'expense' || t.categoryId !== budget.categoryId) return false;
+          const txDate = new Date(t.date);
+          return txDate >= start && txDate <= end;
+        })
         .reduce((sum, t) => sum + t.amount, 0);
       return { ...budget, spent };
     });
-  }, [getCurrentMonthBudgets, monthTransactions]);
+  }, [getCurrentPeriodBudgets, transactions]);
 
   const recentTransactions = transactions.slice(0, 7);
   const totalBalance = getTotalBalance();
@@ -242,13 +248,14 @@ export default function DashboardPage() {
                   </Link>
                 </div>
                 <div className="px-5 pb-5 space-y-4">
-                  {budgetData.slice(0, 4).map(budget => (
+                  {budgetData.slice(0, 6).map(budget => (
                     <BudgetProgressBar
                       key={budget.id}
                       categoryName={budget.categoryName}
                       categoryIcon={categories.find(c => c.id === budget.categoryId)?.icon || '📦'}
                       spent={budget.spent}
                       budget={budget.amount}
+                      period={budget.period}
                     />
                   ))}
                 </div>

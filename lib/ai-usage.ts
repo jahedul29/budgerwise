@@ -458,6 +458,21 @@ export async function recordAiUsage(params: {
 
       tx.set(ledgerRef, ledgerEntry);
 
+      // Also update monthly aggregate so input/output breakdown is tracked
+      tx.set(
+        monthlyRef,
+        {
+          userId: params.userId,
+          month,
+          inputTokensUsed: FieldValue.increment(params.inputTokens),
+          outputTokensUsed: FieldValue.increment(params.outputTokens),
+          totalTokensUsed: FieldValue.increment(params.totalTokens),
+          requestCount: FieldValue.increment(1),
+          lastUsedAt: timestamp,
+        },
+        { merge: true },
+      );
+
       const userUpdate: Record<string, unknown> = {
         aiTrialTokensUsed: nextUsed,
         aiTrialRequestCount: FieldValue.increment(1),

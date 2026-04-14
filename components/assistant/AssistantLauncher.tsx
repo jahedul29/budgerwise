@@ -26,8 +26,10 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useCategories } from '@/hooks/useCategories';
 import { useTransactions } from '@/hooks/useTransactions';
-import { MonthPicker } from '@/components/shared/MonthPicker';
+import { BudgetPeriodPicker } from '@/components/shared/BudgetPeriodPicker';
 import { useUIStore } from '@/store/uiStore';
+import { formatPeriodKey, getCurrentPeriodKey } from '@/lib/budget-periods';
+import type { BudgetPeriod } from '@/types';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
 import type { AssistantParseResult } from '@/lib/assistant/schemas';
 import type { AiAssistantAccessState, AiUsageSummary } from '@/types';
@@ -151,15 +153,6 @@ function humanizeFieldKey(key: string) {
     default:
       return raw.replace(/([A-Z])/g, ' $1').toLowerCase();
   }
-}
-
-function formatMonth(value: string | undefined) {
-  if (!value) return 'Not set';
-  const [year, month] = value.split('-');
-  if (!year || !month) return value;
-  const date = new Date(Number(year), Number(month) - 1, 1);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 /* ─── Styled Select ─── */
@@ -1682,7 +1675,7 @@ export function AssistantLauncher() {
                                 >
                                   {budgets.map((budget) => (
                                     <option key={budget.id} value={budget.id} className="bg-surface-card text-navy-100">
-                                      {budget.categoryName} • {formatMonth(budget.month)}
+                                      {budget.categoryName} • {formatPeriodKey(budget.month, budget.period)}
                                     </option>
                                   ))}
                                 </StyledSelect>
@@ -1725,7 +1718,15 @@ export function AssistantLauncher() {
                             />
                             <StyledSelect
                               value={parseResult.fields.budget.period ?? ''}
-                              onChange={(v) => updateEntityField('budget', 'period', v)}
+                              onChange={(v) => {
+                                if (!parseResult) return;
+                                const next = structuredClone(parseResult) as typeof parseResult;
+                                if (next.fields.budget) {
+                                  next.fields.budget.period = v as any;
+                                  next.fields.budget.month = getCurrentPeriodKey(v as BudgetPeriod);
+                                }
+                                setParseResult(next);
+                              }}
                               placeholder="Select period"
                             >
                               <option value="monthly" className="bg-surface-card text-navy-100">Monthly</option>
@@ -1733,14 +1734,15 @@ export function AssistantLauncher() {
                               <option value="yearly" className="bg-surface-card text-navy-100">Yearly</option>
                             </StyledSelect>
                             <ConfirmRow
-                              label="Month"
-                              value={formatMonth(parseResult.fields.budget.month)}
+                              label={parseResult.fields.budget.period === 'weekly' ? 'Week' : parseResult.fields.budget.period === 'yearly' ? 'Year' : 'Month'}
+                              value={formatPeriodKey(parseResult.fields.budget.month, parseResult.fields.budget.period ?? 'monthly')}
                               icon={<Calendar className="h-3.5 w-3.5" />}
                               missing={!parseResult.fields.budget.month}
                             />
-                            <MonthPicker
+                            <BudgetPeriodPicker
+                              period={(parseResult.fields.budget.period ?? 'monthly') as BudgetPeriod}
                               value={parseResult.fields.budget.month ?? ''}
-                              onChange={(v) => updateEntityField('budget', 'month', v)}
+                              onChange={(v: string) => updateEntityField('budget', 'month', v)}
                             />
                           </div>
                         </motion.div>
