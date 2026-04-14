@@ -117,6 +117,8 @@ type UserAiDoc = {
   aiTrialConsumedAt?: string | null;
   aiTrialTokenLimit?: number;
   aiTrialTokensUsed?: number;
+  aiTrialRequestCount?: number;
+  aiTrialLastUsedAt?: string | null;
 };
 
 async function getUserAiDoc(userId: string): Promise<UserAiDoc> {
@@ -142,6 +144,8 @@ export async function getUserAiAccessState(userId: string): Promise<AiAssistantA
     ? userData.aiTrialTokenLimit
     : globalSettings.defaultTrialTokenLimit;
   const trialTokensUsed = typeof userData.aiTrialTokensUsed === 'number' ? userData.aiTrialTokensUsed : 0;
+  const trialRequestCount = typeof userData.aiTrialRequestCount === 'number' ? userData.aiTrialRequestCount : 0;
+  const trialLastUsedAt = typeof userData.aiTrialLastUsedAt === 'string' ? userData.aiTrialLastUsedAt : undefined;
   const trialRemaining = Math.max(0, trialTokenLimit - trialTokensUsed);
 
   if (entitlementType === 'trial') {
@@ -162,8 +166,8 @@ export async function getUserAiAccessState(userId: string): Promise<AiAssistantA
         tokenLimit: trialTokenLimit,
         remaining: trialRemaining,
         usagePercent: trialTokenLimit > 0 ? trialTokensUsed / trialTokenLimit : 1,
-        requestCount: 0,
-        lastUsedAt: userData.aiTrialStartedAt ?? undefined,
+        requestCount: trialRequestCount,
+        lastUsedAt: trialLastUsedAt ?? userData.aiTrialStartedAt ?? undefined,
         isUnlimited: false,
         isCustomLimit: false,
         hardStopEnabled: true,
@@ -272,6 +276,8 @@ export async function startUserAiTrial(userId: string): Promise<AiAssistantAcces
     aiTrialConsumedAt: null,
     aiTrialTokenLimit: globalSettings.defaultTrialTokenLimit,
     aiTrialTokensUsed: 0,
+    aiTrialRequestCount: 0,
+    aiTrialLastUsedAt: null,
     updatedAt: nowIso,
   }, { merge: true });
 
@@ -454,6 +460,8 @@ export async function recordAiUsage(params: {
 
       const userUpdate: Record<string, unknown> = {
         aiTrialTokensUsed: nextUsed,
+        aiTrialRequestCount: FieldValue.increment(1),
+        aiTrialLastUsedAt: timestamp,
         updatedAt: timestamp,
       };
 

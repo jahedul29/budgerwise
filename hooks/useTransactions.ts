@@ -4,7 +4,7 @@ import { useTransactionStore } from '@/store/transactionStore';
 import { localDb } from '@/lib/dexie';
 import { generateId } from '@/lib/utils';
 import { SYNC_COMPLETE_EVENT } from '@/lib/sync-events';
-import type { Transaction, TransactionType, PaymentMethod } from '@/types';
+import type { Transaction } from '@/types';
 
 export function useTransactions() {
   const store = useTransactionStore();

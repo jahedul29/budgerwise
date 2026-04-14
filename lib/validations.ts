@@ -8,10 +8,11 @@ export const transactionSchema = z.object({
   categoryIcon: z.string(),
   categoryColor: z.string(),
   accountId: z.string().min(1, "Account is required"),
+  transferAccountId: z.string().optional(),
+  transferAccountName: z.string().optional(),
   description: z.string().min(1, "Description is required"),
   notes: z.string().optional(),
   date: z.date(),
-  paymentMethod: z.enum(["cash", "card", "bank_transfer", "mobile_banking", "other"]),
   tags: z.array(z.string()),
   isRecurring: z.boolean(),
   recurringConfig: z.object({
@@ -32,7 +33,6 @@ export const budgetSchema = z.object({
 export const accountSchema = z.object({
   name: z.string().min(1, "Account name is required"),
   type: z.enum(["cash", "mobile_banking", "bank", "credit_card", "loan"]),
-  balance: z.number(),
   currency: z.string().min(1),
   color: z.string(),
   icon: z.string(),

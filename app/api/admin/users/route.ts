@@ -53,6 +53,10 @@ export async function GET(request: Request) {
       aiTrialAvailable: boolean;
       aiTrialStartedAt?: string;
       aiTrialConsumedAt?: string;
+      aiTrialTokenLimit?: number;
+      aiTrialTokensUsed?: number;
+      aiTrialRequestCount?: number;
+      aiTrialLastUsedAt?: string;
       aiUseCustomTokenLimit?: boolean;
       aiMonthlyTokenLimit?: number;
       aiUnlimited?: boolean;
@@ -86,6 +90,10 @@ export async function GET(request: Request) {
             aiTrialAvailable: normalized.aiTrialAvailable,
             aiTrialStartedAt: normalized.aiTrialStartedAt,
             aiTrialConsumedAt: normalized.aiTrialConsumedAt,
+            aiTrialTokenLimit: typeof rawData.aiTrialTokenLimit === 'number' ? rawData.aiTrialTokenLimit : undefined,
+            aiTrialTokensUsed: typeof rawData.aiTrialTokensUsed === 'number' ? rawData.aiTrialTokensUsed : 0,
+            aiTrialRequestCount: typeof rawData.aiTrialRequestCount === 'number' ? rawData.aiTrialRequestCount : 0,
+            aiTrialLastUsedAt: typeof rawData.aiTrialLastUsedAt === 'string' ? rawData.aiTrialLastUsedAt : undefined,
             aiUseCustomTokenLimit: Boolean(rawData.aiUseCustomTokenLimit),
             aiMonthlyTokenLimit: typeof rawData.aiMonthlyTokenLimit === 'number' ? rawData.aiMonthlyTokenLimit : undefined,
             aiUnlimited: Boolean(rawData.aiUnlimited),
@@ -129,13 +137,18 @@ export async function GET(request: Request) {
 
     const users = pageUsers.map((user) => {
       const monthData = usageMap.get(user.id);
-      const totalUsed = (monthData?.totalTokensUsed as number) ?? 0;
-      const isUnlimited = user.aiUnlimited === true;
-      const effectiveLimit = isUnlimited
-        ? Infinity
-        : user.aiUseCustomTokenLimit && typeof user.aiMonthlyTokenLimit === 'number'
-          ? user.aiMonthlyTokenLimit
-          : globalSettings.defaultMonthlyTokenLimit;
+      const isTrialUser = user.aiEntitlementType === 'trial';
+      const totalUsed = isTrialUser
+        ? (user.aiTrialTokensUsed ?? 0)
+        : ((monthData?.totalTokensUsed as number) ?? 0);
+      const isUnlimited = isTrialUser ? false : user.aiUnlimited === true;
+      const effectiveLimit = isTrialUser
+        ? (user.aiTrialTokenLimit ?? globalSettings.defaultTrialTokenLimit)
+        : isUnlimited
+          ? Infinity
+          : user.aiUseCustomTokenLimit && typeof user.aiMonthlyTokenLimit === 'number'
+            ? user.aiMonthlyTokenLimit
+            : globalSettings.defaultMonthlyTokenLimit;
       const remaining = isUnlimited ? Infinity : Math.max(0, effectiveLimit - totalUsed);
       const usagePercent = isUnlimited ? 0 : effectiveLimit > 0 ? totalUsed / effectiveLimit : 1;
 
@@ -157,10 +170,11 @@ export async function GET(request: Request) {
           tokenLimit: isUnlimited ? null : effectiveLimit,
           remaining: isUnlimited ? null : remaining,
           usagePercent,
-          requestCount: (monthData?.requestCount as number) ?? 0,
-          lastAiActivity: (monthData?.lastUsedAt as string) ?? null,
+          requestCount: isTrialUser ? (user.aiTrialRequestCount ?? 0) : ((monthData?.requestCount as number) ?? 0),
+          lastAiActivity: isTrialUser ? (user.aiTrialLastUsedAt ?? user.aiTrialStartedAt ?? null) : ((monthData?.lastUsedAt as string) ?? null),
           isUnlimited,
           isCustomLimit: Boolean(user.aiUseCustomTokenLimit),
+          bucketType: isTrialUser ? 'trial' : 'monthly',
         },
       };
     });

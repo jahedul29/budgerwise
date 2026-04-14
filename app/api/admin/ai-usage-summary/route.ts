@@ -17,7 +17,14 @@ export async function GET() {
   const [globalSettings, usersSnap] = await Promise.all([
     getGlobalAiSettings(),
     adminDb.collection('users').select(
-      'aiAssistantEnabled', 'aiUnlimited', 'aiUseCustomTokenLimit', 'aiMonthlyTokenLimit',
+      'aiAssistantEnabled',
+      'aiUnlimited',
+      'aiUseCustomTokenLimit',
+      'aiMonthlyTokenLimit',
+      'aiEntitlementType',
+      'aiTrialTokenLimit',
+      'aiTrialTokensUsed',
+      'aiTrialRequestCount',
     ).get(),
   ]);
 
@@ -25,20 +32,34 @@ export async function GET() {
   let totalUnlimitedUsers = 0;
   let totalAllocatedTokens = 0;
   const enabledUserIds: string[] = [];
+  let totalTrialUsers = 0;
+  let totalTrialTokensUsed = 0;
+  let totalTrialRequests = 0;
 
   for (const doc of usersSnap.docs) {
     const data = doc.data();
-    if (!data.aiAssistantEnabled) continue;
-    totalEnabledUsers += 1;
-    enabledUserIds.push(doc.id);
+    if (data.aiEntitlementType === 'trial') {
+      totalTrialUsers += 1;
+      totalTrialTokensUsed += typeof data.aiTrialTokensUsed === 'number' ? data.aiTrialTokensUsed : 0;
+      totalTrialRequests += typeof data.aiTrialRequestCount === 'number' ? data.aiTrialRequestCount : 0;
+      totalAllocatedTokens += typeof data.aiTrialTokenLimit === 'number'
+        ? data.aiTrialTokenLimit
+        : globalSettings.defaultTrialTokenLimit;
+      continue;
+    }
 
-    if (data.aiUnlimited) {
-      totalUnlimitedUsers += 1;
-    } else {
-      const limit = data.aiUseCustomTokenLimit && typeof data.aiMonthlyTokenLimit === 'number'
-        ? data.aiMonthlyTokenLimit
-        : globalSettings.defaultMonthlyTokenLimit;
-      totalAllocatedTokens += limit;
+    if (data.aiAssistantEnabled) {
+      totalEnabledUsers += 1;
+      enabledUserIds.push(doc.id);
+
+      if (data.aiUnlimited) {
+        totalUnlimitedUsers += 1;
+      } else {
+        const limit = data.aiUseCustomTokenLimit && typeof data.aiMonthlyTokenLimit === 'number'
+          ? data.aiMonthlyTokenLimit
+          : globalSettings.defaultMonthlyTokenLimit;
+        totalAllocatedTokens += limit;
+      }
     }
   }
 
@@ -70,14 +91,15 @@ export async function GET() {
 
   return NextResponse.json({
     month: currentMonth,
-    totalTokensUsed,
+    totalTokensUsed: totalTokensUsed + totalTrialTokensUsed,
     totalInputTokens,
     totalOutputTokens,
-    totalRequests,
+    totalRequests: totalRequests + totalTrialRequests,
     totalAllocatedTokens,
     totalEnabledUsers,
+    totalTrialUsers,
     totalUnlimitedUsers,
-    activeAiUsers,
+    activeAiUsers: activeAiUsers + totalTrialUsers,
     defaultMonthlyTokenLimit: globalSettings.defaultMonthlyTokenLimit,
     defaultTrialTokenLimit: globalSettings.defaultTrialTokenLimit,
     openaiReportedTokens: globalSettings.openaiReportedMonth === currentMonth

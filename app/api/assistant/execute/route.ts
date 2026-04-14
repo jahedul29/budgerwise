@@ -48,19 +48,29 @@ export async function POST(request: Request) {
 
   if (parsed.data.intent === 'transaction.add') {
     const tx = parsed.data.fields.transaction;
-    if (!tx?.amount || !tx.type || !tx.categoryId || !tx.accountId || !tx.description) {
+    const requiresCategory = tx?.type !== 'transfer';
+    if (!tx?.amount || !tx.type || !tx.accountId || !tx.description || (requiresCategory && !tx.categoryId)) {
       return invalid('Missing required transaction fields');
     }
 
-    const [categoryDoc, accountDoc] = await Promise.all([
-      userRef.collection('categories').doc(tx.categoryId).get(),
+    const [categoryDoc, accountDoc, transferAccountDoc] = await Promise.all([
+      tx.type === 'transfer' ? null : userRef.collection('categories').doc(tx.categoryId!).get(),
       userRef.collection('accounts').doc(tx.accountId).get(),
+      tx.type === 'transfer' && tx.transferAccountId
+        ? userRef.collection('accounts').doc(tx.transferAccountId).get()
+        : null,
     ]);
 
-    if (!categoryDoc.exists) return invalid('Category not found');
+    if (tx.type === 'transfer') {
+      if (!tx.transferAccountId) return invalid('Destination account is required for transfer');
+      if (tx.transferAccountId === tx.accountId) return invalid('Source and destination accounts must be different');
+      if (!transferAccountDoc?.exists) return invalid('Destination account not found');
+    } else if (!categoryDoc?.exists) {
+      return invalid('Category not found');
+    }
     if (!accountDoc.exists) return invalid('Account not found');
 
-    const category = categoryDoc.data() as { name?: string; icon?: string; color?: string };
+    const category = categoryDoc?.data() as { name?: string; icon?: string; color?: string } | undefined;
     const transactionId = tx.id || crypto.randomUUID();
     const amount = tx.amount;
 
@@ -68,15 +78,20 @@ export async function POST(request: Request) {
       id: transactionId,
       amount,
       type: tx.type,
-      categoryId: tx.categoryId,
-      categoryName: category.name ?? tx.categoryName ?? 'Category',
-      categoryIcon: category.icon ?? '📦',
-      categoryColor: category.color ?? '#06D6A0',
+      categoryId: tx.type === 'transfer' ? 'transfer' : tx.categoryId,
+      categoryName: tx.type === 'transfer' ? 'Transfer' : (category?.name ?? tx.categoryName ?? 'Category'),
+      categoryIcon: tx.type === 'transfer' ? '↔️' : (category?.icon ?? '📦'),
+      categoryColor: tx.type === 'transfer' ? '#118AB2' : (category?.color ?? '#06D6A0'),
       accountId: tx.accountId,
+      ...(tx.type === 'transfer'
+        ? {
+            transferAccountId: tx.transferAccountId,
+            transferAccountName: (transferAccountDoc?.data() as { name?: string } | undefined)?.name ?? tx.transferAccountName ?? 'Account',
+          }
+        : {}),
       description: tx.description,
       notes: tx.notes ?? undefined,
       date: tx.dateIso ?? nowIso,
-      paymentMethod: tx.paymentMethod ?? 'cash',
       tags: [],
       isRecurring: false,
       syncStatus: 'synced',
@@ -84,20 +99,33 @@ export async function POST(request: Request) {
       updatedAt: nowIso,
     });
 
-    const delta = tx.type === 'expense' ? -amount : tx.type === 'income' ? amount : 0;
-    if (delta !== 0) {
-      await userRef.collection('accounts').doc(tx.accountId).update({
-        balance: FieldValue.increment(delta),
-        updatedAt: nowIso,
-      });
+    if (tx.type === 'transfer' && tx.transferAccountId) {
+      await Promise.all([
+        userRef.collection('accounts').doc(tx.accountId).update({
+          balance: FieldValue.increment(-amount),
+          updatedAt: nowIso,
+        }),
+        userRef.collection('accounts').doc(tx.transferAccountId).update({
+          balance: FieldValue.increment(amount),
+          updatedAt: nowIso,
+        }),
+      ]);
+    } else {
+      const delta = tx.type === 'expense' ? -amount : tx.type === 'income' ? amount : 0;
+      if (delta !== 0) {
+        await userRef.collection('accounts').doc(tx.accountId).update({
+          balance: FieldValue.increment(delta),
+          updatedAt: nowIso,
+        });
+      }
     }
 
     return NextResponse.json(assistantExecuteResultSchema.parse({
       ok: true,
       entity,
       operation,
-      message: 'Transaction added',
-      affectedIds: [transactionId, tx.accountId],
+      message: tx.type === 'transfer' ? 'Transfer added' : 'Transaction added',
+      affectedIds: tx.type === 'transfer' && tx.transferAccountId ? [transactionId, tx.accountId, tx.transferAccountId] : [transactionId, tx.accountId],
     }));
   }
 
@@ -116,6 +144,9 @@ export async function POST(request: Request) {
     };
 
     const nextType = tx.type ?? current.type;
+    if (current.type === 'transfer' || nextType === 'transfer') {
+      return invalid('Updating transfers is not supported by the assistant yet');
+    }
     const nextAmount = tx.amount ?? current.amount;
     const nextAccountId = tx.accountId ?? current.accountId;
     if (tx.accountId) {
@@ -135,7 +166,6 @@ export async function POST(request: Request) {
       ...(tx.categoryId ? { categoryId: tx.categoryId } : {}),
       ...(tx.categoryName ? { categoryName: tx.categoryName } : {}),
       ...(tx.accountId ? { accountId: tx.accountId } : {}),
-      ...(tx.paymentMethod ? { paymentMethod: tx.paymentMethod } : {}),
       ...(tx.dateIso ? { date: tx.dateIso } : {}),
       ...(tx.description ? { description: tx.description } : {}),
       ...(tx.notes !== undefined ? { notes: tx.notes } : {}),
@@ -174,34 +204,6 @@ export async function POST(request: Request) {
     }));
   }
 
-  if (parsed.data.intent === 'transaction.delete') {
-    const tx = parsed.data.fields.transaction;
-    if (!tx?.id) return invalid('transaction.id is required');
-
-    const txDocRef = userRef.collection('transactions').doc(tx.id);
-    const currentDoc = await txDocRef.get();
-    if (!currentDoc.exists) return invalid('Transaction not found');
-
-    const current = currentDoc.data() as { amount: number; type: string; accountId: string };
-    const revertDelta = current.type === 'expense' ? current.amount : current.type === 'income' ? -current.amount : 0;
-
-    await txDocRef.delete();
-    if (revertDelta !== 0) {
-      await userRef.collection('accounts').doc(current.accountId).update({
-        balance: FieldValue.increment(revertDelta),
-        updatedAt: nowIso,
-      });
-    }
-
-    return NextResponse.json(assistantExecuteResultSchema.parse({
-      ok: true,
-      entity,
-      operation,
-      message: 'Transaction deleted',
-      affectedIds: [tx.id],
-    }));
-  }
-
   if (parsed.data.intent.startsWith('account.')) {
     const account = parsed.data.fields.account;
     const accountsRef = userRef.collection('accounts');
@@ -212,7 +214,7 @@ export async function POST(request: Request) {
         id,
         name: account.name,
         type: account.type,
-        balance: account.balance ?? 0,
+        balance: 0,
         currency: account.currency ?? 'BDT',
         color: account.color ?? '#06D6A0',
         icon: account.icon ?? '💵',
@@ -230,22 +232,20 @@ export async function POST(request: Request) {
       await accountsRef.doc(account.id).set({
         ...(account.name ? { name: account.name } : {}),
         ...(account.type ? { type: account.type } : {}),
-        ...(account.balance !== undefined ? { balance: account.balance } : {}),
         ...(account.currency ? { currency: account.currency } : {}),
         ...(account.color ? { color: account.color } : {}),
         ...(account.icon ? { icon: account.icon } : {}),
         updatedAt: nowIso,
       }, { merge: true });
       return NextResponse.json(assistantExecuteResultSchema.parse({
-        ok: true, entity, operation, message: 'Account updated', affectedIds: [account.id],
+        ok: true,
+        entity,
+        operation,
+        message: 'Account updated',
+        affectedIds: [account.id],
       }));
     }
-    const existing = await accountsRef.doc(account.id).get();
-    if (!existing.exists) return invalid('Account not found');
-    await accountsRef.doc(account.id).delete();
-    return NextResponse.json(assistantExecuteResultSchema.parse({
-      ok: true, entity, operation, message: 'Account deleted', affectedIds: [account.id],
-    }));
+    return invalid('Unsupported account action');
   }
 
   if (parsed.data.intent.startsWith('category.')) {
@@ -283,12 +283,7 @@ export async function POST(request: Request) {
         ok: true, entity, operation, message: 'Category updated', affectedIds: [category.id],
       }));
     }
-    const existing = await categoriesRef.doc(category.id).get();
-    if (!existing.exists) return invalid('Category not found');
-    await categoriesRef.doc(category.id).delete();
-    return NextResponse.json(assistantExecuteResultSchema.parse({
-      ok: true, entity, operation, message: 'Category deleted', affectedIds: [category.id],
-    }));
+    return invalid('Unsupported category action');
   }
 
   if (parsed.data.intent.startsWith('budget.')) {
@@ -337,12 +332,7 @@ export async function POST(request: Request) {
         ok: true, entity, operation, message: 'Budget updated', affectedIds: [budget.id],
       }));
     }
-    const existing = await budgetsRef.doc(budget.id).get();
-    if (!existing.exists) return invalid('Budget not found');
-    await budgetsRef.doc(budget.id).delete();
-    return NextResponse.json(assistantExecuteResultSchema.parse({
-      ok: true, entity, operation, message: 'Budget deleted', affectedIds: [budget.id],
-    }));
+    return invalid('Unsupported budget action');
   }
 
   return invalid('Unsupported intent');

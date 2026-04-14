@@ -1,9 +1,14 @@
-import { auth } from './auth';
+import { auth, getE2EAuthUser } from './auth';
 import { adminDb, isFirebaseAdminConfigured } from './firebase-admin';
 import type { UserRole } from '@/types';
 
 /** Get a user's role from Firestore */
 export async function getUserRole(email: string | null | undefined): Promise<UserRole> {
+  const e2eUser = await getE2EAuthUser();
+  if (e2eUser?.email && email && e2eUser.email === email) {
+    return e2eUser.role ?? 'user';
+  }
+
   if (!email) return 'user';
   if (!isFirebaseAdminConfigured || !adminDb) return 'user';
 
@@ -25,7 +30,10 @@ export async function requireAdmin(): Promise<{
   const email = session?.user?.email;
   if (!session?.user || !email) return null;
 
-  const role = await getUserRole(email);
+  const sessionRole = (session.user as { role?: UserRole }).role;
+  const role = sessionRole && sessionRole !== 'user'
+    ? sessionRole
+    : await getUserRole(email);
   if (role === 'user') return null;
 
   return { user: session.user, role };

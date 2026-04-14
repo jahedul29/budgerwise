@@ -60,11 +60,24 @@ export async function POST(request: Request) {
   for (const doc of snapshot.docs) {
     const transaction = doc.data() as {
       accountId?: string;
+      transferAccountId?: string;
       amount?: number;
       type?: string;
     };
 
     if (!transaction.accountId || typeof transaction.amount !== 'number') {
+      continue;
+    }
+
+    if (transaction.type === 'transfer' && transaction.transferAccountId) {
+      balanceAdjustments.set(
+        transaction.accountId,
+        (balanceAdjustments.get(transaction.accountId) ?? 0) + transaction.amount,
+      );
+      balanceAdjustments.set(
+        transaction.transferAccountId,
+        (balanceAdjustments.get(transaction.transferAccountId) ?? 0) - transaction.amount,
+      );
       continue;
     }
 

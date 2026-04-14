@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import type { AccountType, CategoryType, PaymentMethod, TransactionType } from '@/types';
+import type { AccountType, CategoryType, TransactionType } from '@/types';
 
 export interface AssistantTransactionDraft {
   amount?: number;
   type?: TransactionType;
   categoryId?: string;
   accountId?: string;
-  paymentMethod?: PaymentMethod;
+  transferAccountId?: string;
   dateIso?: string;
   description?: string;
   notes?: string;
@@ -24,7 +24,6 @@ export interface AssistantCategoryDraft {
 export interface AssistantAccountDraft {
   name?: string;
   type?: AccountType;
-  balance?: number;
   currency?: string;
   icon?: string;
   color?: string;

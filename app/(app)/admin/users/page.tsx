@@ -40,6 +40,7 @@ interface AiTokenUsage {
   lastAiActivity: string | null;
   isUnlimited: boolean;
   isCustomLimit: boolean;
+  bucketType?: 'trial' | 'monthly';
 }
 
 interface UserRecord {
@@ -868,7 +869,7 @@ export default function AdminUsersPage() {
                       </div>
 
                       {/* Token usage summary */}
-                      {usage && user.aiAssistantEnabled && (
+                      {usage && (user.aiAssistantEnabled || user.aiEntitlementType === 'trial') && (
                         <div className="hidden sm:flex flex-col items-end gap-0.5 shrink-0 min-w-[100px]">
                           <div className="flex items-center gap-1">
                             <Zap className={`h-3 w-3 ${getUsageColor(usage.usagePercent)}`} />
@@ -884,6 +885,9 @@ export default function AdminUsersPage() {
                           </div>
                           <span className="text-[10px] text-navy-400 dark:text-navy-500 tabular-nums">
                             {fmtTokens(usage.totalTokensUsed)}{usage.isUnlimited ? '' : ` / ${fmtTokens(usage.tokenLimit)}`}
+                          </span>
+                          <span className="text-[9px] text-navy-300 dark:text-navy-600">
+                            {usage.bucketType === 'trial' ? 'Free trial' : 'Monthly'}
                           </span>
                           {usage.requestCount > 0 && (
                             <span className="text-[9px] text-navy-300 dark:text-navy-600">
@@ -1057,7 +1061,9 @@ export default function AdminUsersPage() {
                 {/* Token usage summary */}
                 {selectedUser.aiTokenUsage && (
                   <div className="rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-surface-light/50 dark:bg-white/[0.02] p-3 space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-navy-400 dark:text-navy-500">Token Usage This Month</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-navy-400 dark:text-navy-500">
+                      {selectedUser.aiTokenUsage.bucketType === 'trial' ? 'Free Trial Usage' : 'Token Usage This Month'}
+                    </p>
                     <div className="grid grid-cols-3 gap-3">
                       <div>
                         <p className="text-[10px] text-navy-400 dark:text-navy-500">Used</p>
@@ -1082,7 +1088,9 @@ export default function AdminUsersPage() {
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <span className={`text-[11px] font-semibold ${getUsageColor(selectedUser.aiTokenUsage.usagePercent)}`}>
-                            {selectedUser.aiTokenUsage.usagePercent >= 1 ? 'Limit exceeded' : `${Math.round(selectedUser.aiTokenUsage.usagePercent * 100)}% used`}
+                            {selectedUser.aiTokenUsage.bucketType === 'trial'
+                              ? (selectedUser.aiTokenUsage.usagePercent >= 1 ? 'Free trial finished' : `${Math.round(selectedUser.aiTokenUsage.usagePercent * 100)}% of free trial used`)
+                              : (selectedUser.aiTokenUsage.usagePercent >= 1 ? 'Limit exceeded' : `${Math.round(selectedUser.aiTokenUsage.usagePercent * 100)}% used`)}
                           </span>
                           <span className="text-[10px] text-navy-400">
                             {selectedUser.aiTokenUsage.requestCount} requests

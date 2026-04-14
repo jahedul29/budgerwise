@@ -124,9 +124,9 @@ export default function SettingsPage() {
   const handleExportCSV = async () => {
     try {
       const transactions = await localDb.transactions.toArray();
-      const headers = 'Date,Type,Category,Description,Amount,Payment Method,Notes\n';
+      const headers = 'Date,Type,Category,Description,Amount,Notes\n';
       const csv = transactions.map(t =>
-        `${new Date(t.date).toLocaleDateString()},${t.type},${t.categoryName},${t.description},${t.amount},${t.paymentMethod},${t.notes || ''}`
+        `${new Date(t.date).toLocaleDateString()},${t.type},${t.categoryName},${t.description},${t.amount},${t.notes || ''}`
       ).join('\n');
       const blob = new Blob([headers + csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);

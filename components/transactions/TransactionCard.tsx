@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatAmount } from '@/lib/currency';
+import { useAccounts } from '@/hooks/useAccounts';
 import type { Transaction } from '@/types';
 
 interface TransactionCardProps {
@@ -12,7 +13,18 @@ interface TransactionCardProps {
 }
 
 export function TransactionCard({ transaction, currency = 'BDT', onClick }: TransactionCardProps) {
+  const { accounts } = useAccounts();
   const isExpense = transaction.type === 'expense';
+  const isTransfer = transaction.type === 'transfer';
+  const amountTone = isTransfer ? 'text-accent dark:text-accent' : isExpense ? 'text-expense' : 'text-income';
+  const sourceAccountName = isTransfer
+    ? accounts.find((account) => account.id === transaction.accountId)?.name
+    : undefined;
+  const subtitle = isTransfer
+    ? [sourceAccountName ? `From ${sourceAccountName}` : null, transaction.transferAccountName ? `To ${transaction.transferAccountName}` : null]
+        .filter(Boolean)
+        .join(' • ') || transaction.categoryName
+    : transaction.categoryName;
 
   return (
     <motion.div
@@ -33,17 +45,17 @@ export function TransactionCard({ transaction, currency = 'BDT', onClick }: Tran
           {transaction.description}
         </p>
         <p className="text-xs text-navy-400 dark:text-navy-300">
-          {transaction.categoryName}
+          {subtitle}
         </p>
       </div>
       <div className="w-[84px] shrink-0 text-right sm:w-[104px]">
         <p
           className={cn(
             'truncate text-[13px] font-display font-bold tabular-nums sm:text-sm',
-            isExpense ? 'text-expense' : 'text-income'
+            amountTone
           )}
         >
-          {isExpense ? '-' : '+'}{formatAmount(transaction.amount, currency)}
+          {isTransfer ? formatAmount(transaction.amount, currency) : `${isExpense ? '-' : '+'}${formatAmount(transaction.amount, currency)}`}
         </p>
         <p className="truncate text-[10px] text-navy-400 dark:text-navy-300 sm:text-[11px]">
           {format(new Date(transaction.date), 'h:mm a')}

@@ -22,6 +22,30 @@ function normalizeText(value?: string | null) {
   return (value ?? '').trim().toLowerCase();
 }
 
+function extractAccountTargetName(text: string) {
+  const renameMatch = text.match(/rename\s+(?:my\s+)?(.+?)\s+account\s+to\s+.+$/i);
+  if (renameMatch) return renameMatch[1]?.trim();
+
+  const changeTypeMatch = text.match(/change\s+(?:my\s+)?(.+?)\s+account\s+to\s+(cash|mobile banking|bank|credit card|loan)$/i);
+  if (changeTypeMatch) return changeTypeMatch[1]?.trim();
+
+  return undefined;
+}
+
+function extractCategoryTargetName(text: string) {
+  const renameMatch = text.match(/rename\s+(?:the\s+)?(.+?)\s+category\s+to\s+.+$/i);
+  if (renameMatch) return renameMatch[1]?.trim();
+  return undefined;
+}
+
+function keepOnlyRelevantIntentData<T extends { key: string }>(
+  intent: string,
+  items: T[],
+) {
+  const [entity] = intent.split('.') as [string, string];
+  return items.filter((item) => item.key === 'clarification' || item.key.startsWith(`${entity}.`));
+}
+
 type UserEntity = {
   id: string;
   name?: string;
@@ -59,15 +83,23 @@ function parseSimpleTransactionText(text: string, nowIso: string): Awaited<Retur
   const normalized = normalizeText(raw);
   const expenseSignals = ['spent', 'pay', 'paid', 'bought', 'খরচ'];
   const incomeSignals = ['received', 'got paid', 'earned', 'income', 'আয়'];
+  const incomeAccountPattern = /(?:add|deposit|put)\s+(\d+(?:[.,]\d+)?)(?:\s*[a-z]{2,})?\s+(?:to|into)\s+(?:my\s+)?(.+?)\s+account$/i;
+  const transferPattern = /transfer\s+(\d+(?:[.,]\d+)?)(?:\s*[a-z]{2,})?\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+account)?$/i;
 
   let intent: 'transaction.add' | null = null;
-  let type: 'expense' | 'income' | undefined;
+  let type: 'expense' | 'income' | 'transfer' | undefined;
   if (expenseSignals.some((token) => normalized.includes(token))) {
     intent = 'transaction.add';
     type = 'expense';
   } else if (incomeSignals.some((token) => normalized.includes(token))) {
     intent = 'transaction.add';
     type = 'income';
+  } else if (incomeAccountPattern.test(raw)) {
+    intent = 'transaction.add';
+    type = 'income';
+  } else if (transferPattern.test(normalized)) {
+    intent = 'transaction.add';
+    type = 'transfer';
   }
 
   if (!intent) return null;
@@ -75,8 +107,11 @@ function parseSimpleTransactionText(text: string, nowIso: string): Awaited<Retur
   const amountMatch = raw.match(/(\d+(?:[.,]\d+)?)/);
   const amount = amountMatch ? Number(amountMatch[1].replace(',', '')) : undefined;
 
+  const incomeAccountMatch = raw.match(incomeAccountPattern);
+  const transferMatch = raw.match(transferPattern);
   const accountMatch = raw.match(/from\s+(?:my\s+)?(.+?)\s+account/i);
-  const accountName = accountMatch?.[1]?.trim();
+  const accountName = incomeAccountMatch?.[2]?.trim() || transferMatch?.[2]?.trim() || accountMatch?.[1]?.trim();
+  const transferAccountName = transferMatch?.[3]?.trim();
 
   const categoryMatch = raw.match(/(?:on|for)\s+(.+?)(?:\s+from\s+|\s+and\s+this\s+is\s+|\s+this\s+is\s+|$)/i);
   const categoryRaw = categoryMatch?.[1]?.trim();
@@ -89,7 +124,11 @@ function parseSimpleTransactionText(text: string, nowIso: string): Awaited<Retur
   if (!amount || Number.isNaN(amount)) missingFields.push('transaction.amount');
   if (!type) missingFields.push('transaction.type');
   if (!accountName) missingFields.push('transaction.accountId');
-  if (!categoryName) missingFields.push('transaction.categoryId');
+  if (type === 'transfer') {
+    if (!transferAccountName) missingFields.push('transaction.transferAccountId');
+  } else if (!categoryName) {
+    missingFields.push('transaction.categoryId');
+  }
 
   return {
     intent,
@@ -101,18 +140,174 @@ function parseSimpleTransactionText(text: string, nowIso: string): Awaited<Retur
         amount,
         type,
         accountName,
+        transferAccountName,
         categoryName,
-        paymentMethod: accountName && normalizeText(accountName).includes('cash') ? 'cash' : undefined,
         dateMode: 'relative',
         relativeDate: 'today',
         dateIso: nowIso,
-        description: notes ? `Expense for ${notes}` : `Expense on ${categoryName ?? 'category'}`,
+        description:
+          type === 'transfer'
+            ? `Transfer to ${transferMatch?.[3]?.trim() ?? 'another account'}`
+            :
+          type === 'income'
+            ? notes ? `Income for ${notes}` : `Income added to ${accountName ?? 'account'}`
+            : notes ? `Expense for ${notes}` : `Expense on ${categoryName ?? 'category'}`,
         notes: notes ?? raw,
       },
     },
     missingFields,
     tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   };
+}
+
+function parseSimpleAccountText(text: string): Awaited<ReturnType<typeof parseWithOpenAI>> | null {
+  const raw = text.trim();
+  if (!raw) return null;
+
+  const addMatch = raw.match(/(?:add|create)\s+(?:a\s+)?(cash|mobile banking|bank|credit card|loan)\s+account(?:\s+called|\s+named)?\s+(.+)$/i);
+  if (addMatch) {
+    const rawType = normalizeText(addMatch[1]).replace(/\s+/g, '_');
+    return {
+      intent: 'account.add',
+      entity: 'account',
+      operation: 'add',
+      confidence: 0.78,
+      fields: {
+        account: {
+          type: rawType === 'mobile_banking' || rawType === 'credit_card' ? rawType : rawType as 'cash' | 'bank' | 'loan',
+          name: addMatch[2]?.trim(),
+        },
+      },
+      missingFields: [],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  const renameMatch = raw.match(/rename\s+(?:my\s+)?(.+?)\s+account\s+to\s+(.+)$/i);
+  if (renameMatch) {
+    return {
+      intent: 'account.update',
+      entity: 'account',
+      operation: 'update',
+      confidence: 0.78,
+      fields: {
+        account: {
+          id: undefined,
+          name: renameMatch[2]?.trim(),
+        },
+      },
+      missingFields: ['account.id'],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  const changeTypeMatch = raw.match(/change\s+(?:my\s+)?(.+?)\s+account\s+to\s+(cash|mobile banking|bank|credit card|loan)$/i);
+  if (changeTypeMatch) {
+    const rawType = normalizeText(changeTypeMatch[2]).replace(/\s+/g, '_');
+    return {
+      intent: 'account.update',
+      entity: 'account',
+      operation: 'update',
+      confidence: 0.74,
+      fields: {
+        account: {
+          type: rawType === 'mobile_banking' || rawType === 'credit_card' ? rawType : rawType as 'cash' | 'bank' | 'loan',
+        },
+      },
+      missingFields: ['account.id'],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  return null;
+}
+
+function parseSimpleCategoryText(text: string): Awaited<ReturnType<typeof parseWithOpenAI>> | null {
+  const raw = text.trim();
+  if (!raw) return null;
+
+  const addMatch = raw.match(/(?:create|add)\s+(?:an?\s+)?(expense|income)\s+category(?:\s+called|\s+named)?\s+(.+)$/i);
+  if (addMatch) {
+    return {
+      intent: 'category.add',
+      entity: 'category',
+      operation: 'add',
+      confidence: 0.8,
+      fields: {
+        category: {
+          type: normalizeText(addMatch[1]) as 'income' | 'expense',
+          name: addMatch[2]?.trim(),
+        },
+      },
+      missingFields: [],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  const renameMatch = raw.match(/rename\s+(?:the\s+)?(.+?)\s+category\s+to\s+(.+)$/i);
+  if (renameMatch) {
+    return {
+      intent: 'category.update',
+      entity: 'category',
+      operation: 'update',
+      confidence: 0.78,
+      fields: {
+        category: {
+          name: renameMatch[2]?.trim(),
+        },
+      },
+      missingFields: ['category.id'],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  return null;
+}
+
+function parseSimpleBudgetText(text: string, nowIso: string): Awaited<ReturnType<typeof parseWithOpenAI>> | null {
+  const raw = text.trim();
+  if (!raw) return null;
+
+  const addMatch = raw.match(/set\s+(?:a\s+)?(monthly|weekly|yearly)\s+budget\s+of\s+(\d+(?:[.,]\d+)?)\s+(?:for|on)\s+(.+)$/i);
+  if (addMatch) {
+    return {
+      intent: 'budget.add',
+      entity: 'budget',
+      operation: 'add',
+      confidence: 0.82,
+      fields: {
+        budget: {
+          period: normalizeText(addMatch[1]) as 'monthly' | 'weekly' | 'yearly',
+          amount: Number(addMatch[2].replace(/,/g, '')),
+          categoryName: addMatch[3]?.trim(),
+          month: new Date(nowIso).toISOString().slice(0, 7),
+        },
+      },
+      missingFields: [],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  const updateMatch = raw.match(/update\s+(?:my\s+)?(.+?)\s+budget\s+to\s+(\d+(?:[.,]\d+)?)$/i);
+  if (updateMatch) {
+    return {
+      intent: 'budget.update',
+      entity: 'budget',
+      operation: 'update',
+      confidence: 0.78,
+      fields: {
+        budget: {
+          amount: Number(updateMatch[2].replace(/,/g, '')),
+          categoryName: updateMatch[1]?.trim(),
+          month: new Date(nowIso).toISOString().slice(0, 7),
+        },
+      },
+      missingFields: ['budget.id'],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
+
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -157,7 +352,11 @@ export async function POST(request: Request) {
       nowIso,
     });
   } catch (error) {
-    const heuristic = parseSimpleTransactionText(input.data.text, nowIso);
+    const heuristic =
+      parseSimpleTransactionText(input.data.text, nowIso) ??
+      parseSimpleBudgetText(input.data.text, nowIso) ??
+      parseSimpleCategoryText(input.data.text) ??
+      parseSimpleAccountText(input.data.text);
     if (heuristic) {
       parsed = heuristic;
       usageStatus = 'fallback';
@@ -318,19 +517,37 @@ export async function POST(request: Request) {
     }
 
     if (!fields.transaction.categoryId) {
-      const categoryId = resolveByName({
-        key: 'transaction.categoryId',
-        query: fields.transaction.categoryName,
-        options: categories.map((category) => ({
-          id: category.id,
-          name: category.name,
-          subtitle: category.type,
-        })),
-      });
-      if (categoryId) fields.transaction.categoryId = categoryId;
+      if (fields.transaction.type === 'transfer') {
+        fields.transaction.categoryId = 'transfer';
+        fields.transaction.categoryName = 'Transfer';
+      } else {
+        const categoryId = resolveByName({
+          key: 'transaction.categoryId',
+          query: fields.transaction.categoryName,
+          options: categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+            subtitle: category.type,
+          })),
+        });
+        if (categoryId) fields.transaction.categoryId = categoryId;
+      }
     }
 
-    if ((parsed.intent === 'transaction.update' || parsed.intent === 'transaction.delete') && !fields.transaction.id) {
+    if (!fields.transaction.transferAccountId && fields.transaction.type === 'transfer') {
+      const transferAccountId = resolveByName({
+        key: 'transaction.transferAccountId',
+        query: fields.transaction.transferAccountName,
+        options: accounts.map((account) => ({
+          id: account.id,
+          name: account.name,
+          subtitle: account.type,
+        })),
+      });
+      if (transferAccountId) fields.transaction.transferAccountId = transferAccountId;
+    }
+
+    if (parsed.intent === 'transaction.update' && !fields.transaction.id) {
       const txId = resolveByName({
         key: 'transaction.id',
         query: fields.transaction.description,
@@ -372,6 +589,40 @@ export async function POST(request: Request) {
     }
   }
 
+  if (fields.account) {
+    fields.account = { ...fields.account };
+    if (!fields.account.id && parsed.intent === 'account.update') {
+      const accountQuery = extractAccountTargetName(input.data.text) ?? fields.account.name ?? input.data.text;
+      const accountId = resolveByName({
+        key: 'account.id',
+        query: accountQuery,
+        options: accounts.map((account) => ({
+          id: account.id,
+          name: account.name,
+          subtitle: account.type,
+        })),
+      });
+      if (accountId) fields.account.id = accountId;
+    }
+  }
+
+  if (fields.category) {
+    fields.category = { ...fields.category };
+    if (!fields.category.id && parsed.intent === 'category.update') {
+      const categoryQuery = extractCategoryTargetName(input.data.text) ?? fields.category.name ?? input.data.text;
+      const categoryId = resolveByName({
+        key: 'category.id',
+        query: categoryQuery,
+        options: categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          subtitle: category.type,
+        })),
+      });
+      if (categoryId) fields.category.id = categoryId;
+    }
+  }
+
   // For add operations, ensure required fields are present and remove irrelevant missingFields
   if (parsed.intent === 'account.add') {
     if (!fields.account) fields.account = {};
@@ -392,6 +643,29 @@ export async function POST(request: Request) {
     if (!fields.category.type && !missingFields.includes('category.type')) missingFields.push('category.type');
   }
 
+  if (parsed.intent === 'account.update') {
+    if (!fields.account) fields.account = {};
+    if (!fields.account.id && !missingFields.includes('account.id')) missingFields.push('account.id');
+    const hasUpdateValue =
+      Boolean(fields.account.name) ||
+      Boolean(fields.account.type) ||
+      Boolean(fields.account.currency) ||
+      Boolean(fields.account.color) ||
+      Boolean(fields.account.icon);
+    if (!hasUpdateValue && !missingFields.includes('account.name')) missingFields.push('account.name');
+  }
+
+  if (parsed.intent === 'category.update') {
+    if (!fields.category) fields.category = {};
+    if (!fields.category.id && !missingFields.includes('category.id')) missingFields.push('category.id');
+    const hasUpdateValue =
+      Boolean(fields.category.name) ||
+      Boolean(fields.category.type) ||
+      Boolean(fields.category.color) ||
+      Boolean(fields.category.icon);
+    if (!hasUpdateValue && !missingFields.includes('category.name')) missingFields.push('category.name');
+  }
+
   if (parsed.intent === 'budget.add') {
     if (!fields.budget) fields.budget = {};
     const idx = missingFields.indexOf('budget.id');
@@ -399,6 +673,24 @@ export async function POST(request: Request) {
     if (!fields.budget.categoryId && !missingFields.includes('budget.categoryId')) missingFields.push('budget.categoryId');
     if (!fields.budget.amount && !missingFields.includes('budget.amount')) missingFields.push('budget.amount');
     if (!fields.budget.period) fields.budget.period = 'monthly';
+    if (!fields.budget.month) fields.budget.month = new Date(nowIso).toISOString().slice(0, 7);
+  }
+
+  if (parsed.intent === 'budget.update') {
+    if (!fields.budget) fields.budget = {};
+    if (!fields.budget.id && !fields.budget.categoryId && !missingFields.includes('budget.id')) missingFields.push('budget.id');
+    if (fields.budget.categoryName && !fields.budget.categoryId) {
+      const categoryId = resolveByName({
+        key: 'budget.categoryId',
+        query: fields.budget.categoryName,
+        options: categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+        })),
+      });
+      if (categoryId) fields.budget.categoryId = categoryId;
+    }
+    if (!fields.budget.amount && !missingFields.includes('budget.amount')) missingFields.push('budget.amount');
     if (!fields.budget.month) fields.budget.month = new Date(nowIso).toISOString().slice(0, 7);
   }
 
@@ -424,15 +716,29 @@ export async function POST(request: Request) {
   const clarIdx = missingFields.indexOf('clarification');
   if (clarIdx !== -1 && parsed.confidence > 0) missingFields.splice(clarIdx, 1);
 
+  const [intentEntity] = parsed.intent.split('.') as ['transaction' | 'account' | 'category' | 'budget', 'add' | 'update'];
+  const cleanedFields = {
+    transaction: intentEntity === 'transaction' ? fields.transaction : undefined,
+    account: intentEntity === 'account' ? fields.account : undefined,
+    category: intentEntity === 'category' ? fields.category : undefined,
+    budget: intentEntity === 'budget' ? fields.budget : undefined,
+  };
+  const cleanedMissingFields = keepOnlyRelevantIntentData(
+    parsed.intent,
+    Array.from(new Set(missingFields)).map((key) => ({ key })),
+  ).map((item) => item.key);
+  const cleanedAmbiguities = keepOnlyRelevantIntentData(parsed.intent, ambiguities);
+  const cleanedResolutions = keepOnlyRelevantIntentData(parsed.intent, resolutions);
+
   const result = assistantParseResultSchema.parse({
     intent: parsed.intent,
     entity: parsed.entity,
     operation: parsed.operation,
     confidence: parsed.confidence,
-    fields,
-    missingFields: Array.from(new Set(missingFields)),
-    ambiguities,
-    resolutions,
+    fields: cleanedFields,
+    missingFields: cleanedMissingFields,
+    ambiguities: cleanedAmbiguities,
+    resolutions: cleanedResolutions,
     requiresConfirmation: true,
     originalText: input.data.text,
   });
