@@ -4,12 +4,22 @@ import { cn } from '@/lib/utils';
 import { formatAmount } from '@/lib/currency';
 import { Trash2, Edit } from 'lucide-react';
 
+import type { BudgetPeriod } from '@/types';
+
+const periodBadgeStyles: Record<BudgetPeriod, string> = {
+  weekly: 'bg-accent/15 text-accent dark:bg-accent/20 dark:text-accent-light',
+  monthly: 'bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300',
+  yearly: 'bg-warning-light text-warning-dark dark:bg-warning/20 dark:text-warning',
+};
+
 interface BudgetCardProps {
   categoryName: string;
   categoryIcon: string;
   spent: number;
   budget: number;
+  period: BudgetPeriod;
   daysRemaining: number;
+  remainingLabel?: string;
   currency?: string;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -20,7 +30,9 @@ export function BudgetCard({
   categoryIcon,
   spent,
   budget,
+  period,
   daysRemaining,
+  remainingLabel,
   currency = 'BDT',
   onEdit,
   onDelete,
@@ -49,8 +61,13 @@ export function BudgetCard({
             {categoryIcon}
           </div>
           <div>
-            <p className="font-semibold text-navy-800 dark:text-navy-50">{categoryName}</p>
-            <p className="text-xs text-navy-400 dark:text-navy-300">{daysRemaining} days remaining</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-navy-800 dark:text-navy-50">{categoryName}</p>
+              <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize tracking-wide', periodBadgeStyles[period])}>
+                {period}
+              </span>
+            </div>
+            <p className="text-xs text-navy-400 dark:text-navy-300">{remainingLabel ?? `${daysRemaining} days remaining`}</p>
           </div>
         </div>
         <div className="flex gap-1">

@@ -1,13 +1,14 @@
 'use client';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MonthPicker } from '@/components/shared/MonthPicker';
+import { BudgetPeriodPicker } from '@/components/shared/BudgetPeriodPicker';
 import { useCategories } from '@/hooks/useCategories';
-import type { Budget } from '@/types';
+import { getCurrentPeriodKey } from '@/lib/budget-periods';
+import type { Budget, BudgetPeriod } from '@/types';
 
 interface BudgetFormProps {
   open: boolean;
@@ -26,13 +27,23 @@ export function BudgetForm({ open, onClose, onSubmit, budget }: BudgetFormProps)
       categoryName: budget?.categoryName || '',
       amount: budget?.amount || '',
       period: budget?.period || 'monthly',
-      month: budget?.month || format(new Date(), 'yyyy-MM'),
+      month: budget?.month || getCurrentPeriodKey(budget?.period || 'monthly'),
       alertThreshold: budget?.alertThreshold || 80,
     },
   });
 
   const selectedCategoryId = watch('categoryId');
+  const selectedPeriod = watch('period') as BudgetPeriod;
   const monthValue = watch('month');
+
+  // Reset month value when period changes
+  const prevPeriodRef = useRef(selectedPeriod);
+  useEffect(() => {
+    if (prevPeriodRef.current !== selectedPeriod) {
+      prevPeriodRef.current = selectedPeriod;
+      setValue('month', getCurrentPeriodKey(selectedPeriod));
+    }
+  }, [selectedPeriod, setValue]);
 
   const handleFormSubmit = (data: any) => {
     const category = expenseCategories.find(c => c.id === data.categoryId);
@@ -114,8 +125,9 @@ export function BudgetForm({ open, onClose, onSubmit, budget }: BudgetFormProps)
             </div>
           </div>
 
-          {/* Month */}
-          <MonthPicker
+          {/* Period Picker */}
+          <BudgetPeriodPicker
+            period={selectedPeriod}
             value={monthValue}
             onChange={(v) => setValue('month', v)}
           />

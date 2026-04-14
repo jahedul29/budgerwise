@@ -66,7 +66,7 @@ export interface Budget {
   categoryName: string;
   amount: number;
   period: BudgetPeriod;
-  month: string; // YYYY-MM
+  month: string; // "YYYY-MM" (monthly), "YYYY-Www" (weekly), "YYYY" (yearly)
   alertThreshold: number;
   createdAt: Date;
   _syncStatus?: SyncStatus;
